@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with PostGIS
+  db:
+    image: postgis/postgis:15-3.3
+    volumes:
+      - energy_model_data:/var/lib/postgresql/data/
+      - ./scripts/setup-db.sh:/docker-entrypoint-initdb.d/setup-db.sh
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5438:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - energy-network
+
+  # FastAPI app in development mode with auto-reload
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_SERVER=db
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PORT=5432
+    ports:
+      - "8008:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ./scripts/run_api_with_migrations.sh
+    networks:
+      - energy-network
+
+  # Martin vector tile server
+  martin:
+    image: ghcr.io/maplibre/martin:v0.11.0
+    volumes:
+      - ./martin-config.yaml:/etc/martin-config.yaml
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - WATCH_MODE=true
+    command: --config /etc/martin-config.yaml
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - energy-network
+
+  # PgAdmin for database management (optional)
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - energy-network
+
+networks:
+  energy-network:
+    driver: bridge
+
+volumes:
+  energy_model_data: 

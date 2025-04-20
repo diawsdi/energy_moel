@@ -1,0 +1,10 @@
+data/
+processed_data/
+.*pbf
+*.pbf
+*.geojson
+*.json
+*.csv
+*.txt
+*.log
+*.log

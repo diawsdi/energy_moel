@@ -1,0 +1,141 @@
+# Martin configuration for building energy visualization
+
+# Connection keep alive timeout
+keep_alive: 120
+
+# The socket address to bind
+listen_addresses: '0.0.0.0:3000'
+
+# Number of web server workers
+worker_processes: 4
+
+# Amount of memory (in MB) to use for caching tiles
+cache_size_mb: 1024
+
+# Database configuration
+postgres:
+  # Database connection string with environment variable
+  connection_string: '${DATABASE_URL:-postgresql://postgres:postgres@db:5432/energy_model}'
+
+  # Maximum Postgres connections pool size
+  pool_size: 20
+
+  # Increase feature limit to handle our 6.6 million buildings
+  max_feature_count: 500000
+
+  # Control the automatic generation of bounds for spatial tables
+  auto_bounds: calc
+
+  # Enable automatic discovery of tables and functions
+  auto_publish:
+    from_schemas:
+      - public
+    tables:
+      # Use a simple source ID format
+      source_id_format: '{table}'
+      # Use id as the feature ID
+      id_columns: id
+      # Clip geometries for better performance
+      clip_geom: true
+      # Increase buffer for smoother rendering
+      buffer: 128
+      # Standard tile extent
+      extent: 4096
+
+  # Explicitly configure our tables
+  tables:
+    buildings_energy:
+      schema: public
+      table: buildings_energy
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 128
+      clip_geom: true
+      geometry_type: GEOMETRY
+      # Disable geometry simplification to preserve building shapes at low zoom levels
+      simplify_tolerance: 0
+      properties:
+        id: int4
+        area_in_meters: float8
+        energy_demand_kwh: float8
+        has_access: bool
+        building_type: varchar
+        year: int4
+    
+    power_plants:
+      schema: public
+      table: power_plants
+      srid: 4326
+      geometry_column: location
+      id_column: plant_id
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 128
+      clip_geom: true
+      geometry_type: POINT
+      properties:
+        plant_id: int8
+        plant_name: varchar
+        plant_type: varchar
+        capacity_mw: numeric
+        status: varchar
+        country: varchar
+        iso_code: varchar
+        year: int4
+    
+    grid_nodes:
+      schema: public
+      table: grid_nodes
+      srid: 4326
+      geometry_column: location
+      id_column: node_id
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 128
+      clip_geom: true
+      geometry_type: POINT
+      properties:
+        node_id: int8
+        node_name: varchar
+        node_type: varchar
+        voltage_kv: int4
+        status: varchar
+        data_source: varchar
+    
+    grid_lines:
+      schema: public
+      table: grid_lines
+      srid: 4326
+      geometry_column: path
+      id_column: line_id
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 128
+      clip_geom: true
+      geometry_type: LINESTRING
+      properties:
+        line_id: int8
+        from_node_id: int8
+        to_node_id: int8
+        from_node_name: varchar
+        to_node_name: varchar
+        voltage_kv: int4
+        status: varchar
+        country: varchar
+        project_name: varchar
+        data_source: varchar

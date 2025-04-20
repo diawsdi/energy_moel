@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building Energy Visualization</title>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css">
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .map-overlay {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.8);
+            margin-right: 20px;
+            font-family: Arial, sans-serif;
+            overflow: auto;
+            border-radius: 3px;
+            padding: 10px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            z-index: 1;
+        }
+        .legend {
+            margin-top: 15px;
+            background-color: #333;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #444;
+        }
+        .legend div {
+            margin: 0 0 10px;
+            display: flex;
+            align-items: center;
+        }
+        .legend div span {
+            display: inline-block;
+            height: 12px;
+            width: 30px;
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+            background: #222;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            color: #fff;
+            max-width: 300px;
+            border: 1px solid #444;
+        }
+        
+        select, button {
+            background-color: #444;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 5px;
+            width: 100%;
+            cursor: pointer;
+        }
+        
+        select:hover, button:hover {
+            background-color: #555;
+        }
+        
+        h3 {
+            margin-top: 0;
+            color: #3498db;
+            border-bottom: 1px solid #444;
+            padding-bottom: 8px;
+        }
+        
+        /* Popup styling */
+        .maplibregl-popup-content {
+            background-color: #222;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+        
+        .maplibregl-popup-tip {
+            border-top-color: #222 !important;
+            border-bottom-color: #222 !important;
+        }
+        
+        .popup-content h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #3498db;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+        }
+        
+        .popup-content table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .popup-content td {
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+        }
+        
+        .popup-content td:first-child {
+            font-weight: bold;
+            color: #ccc;
+            width: 40%;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="controls">
+        <h3>Building Energy Visualization</h3>
+        <div>
+            <label for="colorBy">Color by:</label>
+            <select id="colorBy" onchange="updateMapStyle()">
+                <option value="energy_demand_kwh">Annual Energy Demand (kWh/year)</option>
+                <option value="has_access">Has Access</option>
+                <option value="area_in_meters">Building Area (m²)</option>
+            </select>
+            
+            <div style="margin-top: 15px;">
+                <label>
+                    <input type="checkbox" id="showPowerPlants" checked onchange="togglePowerPlants()">
+                    Show Power Plants
+                </label>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <label>
+                    <input type="checkbox" id="showGridNodes" checked onchange="toggleGridNodes()">
+                    Show Grid Nodes
+                </label>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <label>
+                    <input type="checkbox" id="showGridLines" checked onchange="toggleGridLines()">
+                    Show Transmission Lines
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="map-overlay legend" id="legend"></div>
+    <div class="map-overlay legend" id="power-plants-legend" style="bottom: 10px; top: auto;">
+        <h3>Power Plants</h3>
+        <div><span style="background-color: #ff7f00;"></span>Thermal</div>
+        <div><span style="background-color: #1f78b4;"></span>Hydro</div>
+        <div><span style="background-color: #ffff33;"></span>Solar</div>
+        <div><span style="background-color: #33a02c;"></span>Wind</div>
+        <div><span style="background-color: #999999;"></span>Other</div>
+    </div>
+    
+    <div class="map-overlay legend" id="grid-nodes-legend" style="bottom: 10px; top: auto; right: 150px;">
+        <h3>Grid Nodes</h3>
+        <div><span style="background-color: #ffd700;"></span>30 kV</div>
+        <div><span style="background-color: #ff8c00;"></span>90 kV</div>
+        <div><span style="background-color: #ff0000;"></span>225 kV</div>
+        <div><span style="background-color: #999999;"></span>Other</div>
+    </div>
+    
+    <div class="map-overlay legend" id="grid-lines-legend" style="bottom: 10px; top: auto; right: 290px;">
+        <h3>Transmission Lines</h3>
+        <div><span style="background-color: #ffd700; height: 3px;"></span>30 kV</div>
+        <div><span style="background-color: #ff8c00; height: 3px;"></span>90 kV</div>
+        <div><span style="background-color: #ff0000; height: 3px;"></span>225 kV</div>
+        <div><span style="background-color: #999999; height: 3px;"></span>Other</div>
+        <div style="margin-top: 8px;"><span style="border-top: 3px solid #333;"></span>Existing</div>
+        <div><span style="border-top: 3px dashed #333;"></span>Planned</div>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.js"></script>
+    <script>
+        // Initialize popup for feature information
+        const popup = new maplibregl.Popup({
+            closeButton: false,
+            closeOnClick: true,
+            maxWidth: '300px'
+        });
+        
+        // Initialize the map with dark style
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                sources: {
+                    // Use a dark style map from Carto
+                    darkMap: {
+                        type: 'raster',
+                        tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', 'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', 'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
+                        tileSize: 256,
+                        attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }
+                },
+                layers: [
+                    {
+                        id: 'dark-map-tiles',
+                        type: 'raster',
+                        source: 'darkMap',
+                        minzoom: 0,
+                        maxzoom: 22
+                    }
+                ]
+            },
+            center: [-14.5, 14.5], // Center on Senegal based on the data extent
+            zoom: 12 // Use a higher zoom level to see buildings
+        });
+        
+        // Disable debugging info
+        map.showTileBoundaries = false;
+
+        map.on('load', function() {
+            // Add the buildings source
+            map.addSource('buildings', {
+                type: 'vector',
+                url: 'http://localhost:3000/buildings_energy',  // Use the TileJSON endpoint
+                minzoom: 0,  // Allow viewing at all zoom levels
+                maxzoom: 22  // Maximum zoom level as requested
+            });
+            
+            // Add the power plants source
+            map.addSource('power_plants', {
+                type: 'vector',
+                url: 'http://localhost:3000/power_plants',  // Use the TileJSON endpoint
+                minzoom: 0,
+                maxzoom: 22
+            });
+            
+            // Add the grid nodes source
+            map.addSource('grid_nodes', {
+                type: 'vector',
+                url: 'http://localhost:3000/grid_nodes',  // Use the TileJSON endpoint
+                minzoom: 0,
+                maxzoom: 22
+            });
+            
+            // Add the grid lines source
+            map.addSource('grid_lines', {
+                type: 'vector',
+                url: 'http://localhost:3000/grid_lines',  // Use the TileJSON endpoint
+                minzoom: 0,
+                maxzoom: 22
+            });
+
+            // Add error handling for the source
+            map.on('error', function(e) {
+                console.error('Map error:', e);
+                alert('Error loading map data: ' + e.error.message);
+            });
+            
+
+
+            // Add the buildings layer with default style (energy demand)
+            addBuildingsLayer('energy_demand_kwh');
+            
+            // Add the power plants layer
+            addPowerPlantsLayer();
+            
+            // Add the grid nodes layer
+            addGridNodesLayer();
+            
+            // Add the grid lines layer
+            addGridLinesLayer();
+            
+            // Create a legend
+            updateLegend('energy_demand_kwh');
+            
+
+
+        });
+
+        function addBuildingsLayer(property) {
+            // Remove existing layers and their event handlers if they exist
+            const buildingLayers = ['buildings-layer', 'buildings-lowzoom-layer'];
+            
+            buildingLayers.forEach(layerId => {
+                if (map.getLayer(layerId)) {
+                    // Remove event handlers
+                    map.off('click', layerId);
+                    map.off('mouseenter', layerId);
+                    map.off('mouseleave', layerId);
+                    
+                    // Remove the layer
+                    map.removeLayer(layerId);
+                }
+            });
+
+            let fillColor, legendItems;
+
+            if (property === 'energy_demand_kwh') {
+                // Create a color scale based on annual energy demand
+                // Using logarithmic scale due to the wide range (12 to 10,486,990 kWh)
+                fillColor = [
+                    'interpolate',
+                    ['linear'],
+                    // Ensure we're properly converting the energy_demand_kwh to a number
+                    ['case',
+                        ['has', 'energy_demand_kwh'], ['to-number', ['get', 'energy_demand_kwh']],
+                        0
+                    ],
+                    0, '#2166ac',        // 0 kWh (blue)
+                    100, '#4393c3',      // 100 kWh (medium blue)
+                    1000, '#92c5de',     // 1,000 kWh (light blue)
+                    10000, '#f7f7f7',    // 10,000 kWh (white)
+                    100000, '#fddbc7',   // 100,000 kWh (light red)
+                    1000000, '#d6604d',  // 1,000,000 kWh (medium red)
+                    10000000, '#b2182b'  // 10,000,000 kWh (dark red)
+                ];
+                legendItems = [
+                    { color: '#2166ac', label: '0 kWh/year' },
+                    { color: '#4393c3', label: '100 kWh/year' },
+                    { color: '#92c5de', label: '1,000 kWh/year' },
+                    { color: '#f7f7f7', label: '10,000 kWh/year' },
+                    { color: '#fddbc7', label: '100,000 kWh/year' },
+                    { color: '#d6604d', label: '1,000,000 kWh/year' },
+                    { color: '#b2182b', label: '10,000,000 kWh/year' }
+                ];
+            } else if (property === 'has_access') {
+                // Color based on energy access
+                fillColor = [
+                    'case',
+                    ['==', ['get', 'has_access'], true], '#1a9850',  // Has access (green)
+                    ['==', ['get', 'has_access'], false], '#d73027', // No access (red)
+                    '#808080'  // Unknown (gray)
+                ];
+                legendItems = [
+                    { color: '#1a9850', label: 'Has Access' },
+                    { color: '#d73027', label: 'No Access' },
+                    { color: '#808080', label: 'Unknown' }
+                ];
+            } else if (property === 'area_in_meters') {
+                // Color based on building area
+                fillColor = [
+                    'interpolate',
+                    ['linear'],
+                    // Ensure we're properly converting the area_in_meters to a number
+                    ['case',
+                        ['has', 'area_in_meters'], ['to-number', ['get', 'area_in_meters']],
+                        0
+                    ],
+                    0, '#ffffcc',   // Very small buildings (light yellow)
+                    50, '#c2e699',  // Small buildings (light green)
+                    100, '#78c679', // Medium buildings (medium green)
+                    200, '#31a354', // Large buildings (dark green)
+                    500, '#006837'  // Very large buildings (very dark green)
+                ];
+                legendItems = [
+                    { color: '#ffffcc', label: '0 m²' },
+                    { color: '#c2e699', label: '50 m²' },
+                    { color: '#78c679', label: '100 m²' },
+                    { color: '#31a354', label: '200 m²' },
+                    { color: '#006837', label: '500+ m²' }
+                ];
+            }
+
+            // Add the main buildings layer (polygons) - better for higher zoom levels
+            map.addLayer({
+                'id': 'buildings-layer',
+                'type': 'fill',
+                'source': 'buildings',
+                'source-layer': 'buildings_energy',  // Match the ID from the TileJSON response
+                'minzoom': 9,  // Only show building polygons at zoom level 9 and above
+                'maxzoom': 22,  // Maximum zoom level to match source
+                'paint': {
+                    'fill-color': fillColor,
+                    'fill-opacity': 0.8,  // Consistent opacity across all zoom levels
+                    'fill-outline-color': '#000000'
+                }
+            });
+            
+            // Add a low-zoom representation of buildings (circles) - better for lower zoom levels
+            map.addLayer({
+                'id': 'buildings-lowzoom-layer',
+                'type': 'circle',
+                'source': 'buildings',
+                'source-layer': 'buildings_energy',
+                'minzoom': 0,  // Show from the lowest zoom level
+                'maxzoom': 9,  // Switch to polygons at zoom level 9
+                'paint': {
+                    // Color using the same scheme as the main layer
+                    'circle-color': fillColor,
+                    // Size that scales with zoom level
+                    'circle-radius': [
+                        'interpolate', ['linear'], ['zoom'],
+                        0, 1,     // 1px at zoom level 0
+                        5, 1.5,   // 1.5px at zoom level 5
+                        8, 2      // 2px at zoom level 8
+                    ],
+                    'circle-opacity': 0.8
+                }
+            });
+
+            // Add click event for building popups
+            map.on('click', 'buildings-layer', function(e) {
+                if (!e.features.length) return;
+                
+                const feature = e.features[0];
+                const properties = feature.properties;
+                
+                // Format the popup content
+                let content = '<div class="popup-content">';
+                content += '<h3>Building Information</h3>';
+                content += '<table>';
+                
+                // Always show ID if available
+                if (properties.id !== undefined && properties.id !== null) {
+                    content += `<tr><td>ID:</td><td>${properties.id}</td></tr>`;
+                }
+                
+                // Always show building type if available
+                if (properties.building_type !== undefined && properties.building_type !== null && properties.building_type !== '') {
+                    content += `<tr><td>Type:</td><td>${properties.building_type}</td></tr>`;
+                }
+                
+                // Always show area if available
+                if (properties.area_in_meters !== undefined && properties.area_in_meters !== null) {
+                    const area = parseFloat(properties.area_in_meters);
+                    if (!isNaN(area)) {
+                        content += `<tr><td>Area:</td><td>${Math.round(area)} m²</td></tr>`;
+                    }
+                }
+                
+                // Always show energy demand if available
+                if (properties.energy_demand_kwh !== undefined && properties.energy_demand_kwh !== null) {
+                    const demand = parseFloat(properties.energy_demand_kwh);
+                    if (!isNaN(demand)) {
+                        content += `<tr><td>Annual Energy Demand:</td><td>${Math.round(demand).toLocaleString()} kWh/year</td></tr>`;
+                    }
+                }
+                
+                // Always show access status if available
+                if (properties.has_access !== undefined && properties.has_access !== null) {
+                    // Convert to boolean if it's a string
+                    const hasAccess = (properties.has_access === true || properties.has_access === 'true') ? true : false;
+                    content += `<tr><td>Has Access:</td><td>${hasAccess ? 'Yes' : 'No'}</td></tr>`;
+                }
+                
+                if (properties.year) {
+                    content += `<tr><td>Year:</td><td>${properties.year}</td></tr>`;
+                }
+                
+                content += '</table>';
+                content += '</div>';
+                
+                // Set popup coordinates and content
+                popup.setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Change cursor to pointer when hovering over buildings (polygon layer)
+            map.on('mouseenter', 'buildings-layer', function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            // Change cursor back when leaving buildings (polygon layer)
+            map.on('mouseleave', 'buildings-layer', function() {
+                map.getCanvas().style.cursor = '';
+            });
+            
+            // Add click event for low-zoom building popups
+            map.on('click', 'buildings-lowzoom-layer', function(e) {
+                if (!e.features.length) return;
+                
+                const feature = e.features[0];
+                const properties = feature.properties;
+                
+                // Use the same popup content creation as the main layer
+                let content = '<div class="popup-content">';
+                content += '<h3>Building Information</h3>';
+                content += '<table>';
+                
+                // Always show ID if available
+                if (properties.id !== undefined && properties.id !== null) {
+                    content += `<tr><td>ID:</td><td>${properties.id}</td></tr>`;
+                }
+                
+                // Always show building type if available
+                if (properties.building_type !== undefined && properties.building_type !== null && properties.building_type !== '') {
+                    content += `<tr><td>Type:</td><td>${properties.building_type}</td></tr>`;
+                }
+                
+                // Always show area if available
+                if (properties.area_in_meters !== undefined && properties.area_in_meters !== null) {
+                    const area = parseFloat(properties.area_in_meters);
+                    if (!isNaN(area)) {
+                        content += `<tr><td>Area:</td><td>${Math.round(area)} m²</td></tr>`;
+                    }
+                }
+                
+                // Always show energy demand if available
+                if (properties.energy_demand_kwh !== undefined && properties.energy_demand_kwh !== null) {
+                    const demand = parseFloat(properties.energy_demand_kwh);
+                    if (!isNaN(demand)) {
+                        content += `<tr><td>Annual Energy Demand:</td><td>${Math.round(demand).toLocaleString()} kWh/year</td></tr>`;
+                    }
+                }
+                
+                // Always show access status if available
+                if (properties.has_access !== undefined && properties.has_access !== null) {
+                    // Convert to boolean if it's a string
+                    const hasAccess = (properties.has_access === true || properties.has_access === 'true') ? true : false;
+                    content += `<tr><td>Has Access:</td><td>${hasAccess ? 'Yes' : 'No'}</td></tr>`;
+                }
+                
+                if (properties.year) {
+                    content += `<tr><td>Year:</td><td>${properties.year}</td></tr>`;
+                }
+                
+                content += '</table>';
+                content += '</div>';
+                
+                // Set popup coordinates and content
+                popup.setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Change cursor to pointer when hovering over buildings (circle layer)
+            map.on('mouseenter', 'buildings-lowzoom-layer', function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            // Change cursor back when leaving buildings (circle layer)
+            map.on('mouseleave', 'buildings-lowzoom-layer', function() {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // Update the legend
+            updateLegend(property, legendItems);
+        }
+
+        function addPowerPlantsLayer() {
+            // Remove existing layer and its event handlers if it exists
+            if (map.getLayer('power-plants-layer')) {
+                // Remove event handlers
+                map.off('click', 'power-plants-layer');
+                map.off('mouseenter', 'power-plants-layer');
+                map.off('mouseleave', 'power-plants-layer');
+                
+                // Remove the layer
+                map.removeLayer('power-plants-layer');
+            }
+            
+            // Add the power plants layer
+            map.addLayer({
+                'id': 'power-plants-layer',
+                'type': 'circle',
+                'source': 'power_plants',
+                'source-layer': 'power_plants',
+                'paint': {
+                    // Color by plant type
+                    'circle-color': [
+                        'match',
+                        ['get', 'plant_type'],
+                        'THERMAL', '#ff7f00',  // Orange for thermal plants
+                        'HYDRO', '#1f78b4',    // Blue for hydro plants
+                        'SOLAR', '#ffff33',    // Yellow for solar plants
+                        'WIND', '#33a02c',     // Green for wind plants
+                        '#999999'              // Grey for other types
+                    ],
+                    'circle-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        5, 5,    // Small at low zoom levels
+                        10, 10,  // Medium at medium zoom levels
+                        15, 15   // Large at high zoom levels
+                    ],
+                    'circle-stroke-width': 2,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-opacity': 0.8
+                }
+            });
+            
+            // Add popup for power plants
+            map.on('click', 'power-plants-layer', function(e) {
+                if (!e.features.length) return;
+                
+                const feature = e.features[0];
+                const properties = feature.properties;
+                
+                // Format the popup content
+                let content = '<div class="popup-content">';
+                content += '<h3>Power Plant Information</h3>';
+                content += '<table>';
+                
+                if (properties.plant_name) {
+                    content += `<tr><td>Name:</td><td>${properties.plant_name}</td></tr>`;
+                }
+                
+                if (properties.plant_type) {
+                    content += `<tr><td>Type:</td><td>${properties.plant_type}</td></tr>`;
+                }
+                
+                if (properties.capacity_mw) {
+                    content += `<tr><td>Capacity:</td><td>${properties.capacity_mw} MW</td></tr>`;
+                }
+                
+                if (properties.status) {
+                    content += `<tr><td>Status:</td><td>${properties.status === 'OPR' ? 'Operational' : properties.status === 'PLN' ? 'Planned' : properties.status}</td></tr>`;
+                }
+                
+                if (properties.country) {
+                    content += `<tr><td>Country:</td><td>${properties.country}</td></tr>`;
+                }
+                
+                content += '</table>';
+                content += '</div>';
+                
+                // Set popup coordinates and content
+                popup.setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Change cursor to pointer when hovering over power plants
+            map.on('mouseenter', 'power-plants-layer', function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            // Change cursor back when leaving power plants
+            map.on('mouseleave', 'power-plants-layer', function() {
+                map.getCanvas().style.cursor = '';
+            });
+        }
+        
+        function addGridNodesLayer() {
+            // Remove existing layer and its event handlers if it exists
+            if (map.getLayer('grid-nodes-layer')) {
+                // Remove event handlers
+                map.off('click', 'grid-nodes-layer');
+                map.off('mouseenter', 'grid-nodes-layer');
+                map.off('mouseleave', 'grid-nodes-layer');
+                
+                // Remove the layer
+                map.removeLayer('grid-nodes-layer');
+            }
+            
+            // Add the grid nodes layer
+            map.addLayer({
+                'id': 'grid-nodes-layer',
+                'type': 'circle',
+                'source': 'grid_nodes',
+                'source-layer': 'grid_nodes',
+                'paint': {
+                    // Color by voltage level
+                    'circle-color': [
+                        'match',
+                        ['get', 'voltage_kv'],
+                        30, '#ffd700',   // Gold for 30kV
+                        90, '#ff8c00',   // Dark orange for 90kV
+                        225, '#ff0000',  // Red for 225kV
+                        '#999999'        // Grey for other voltages
+                    ],
+                    'circle-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        5, 3,    // Small at low zoom levels
+                        10, 6,   // Medium at medium zoom levels
+                        15, 9    // Large at high zoom levels
+                    ],
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-opacity': 0.8
+                }
+            });
+            
+            // Add popup for grid nodes
+            map.on('click', 'grid-nodes-layer', function(e) {
+                if (!e.features.length) return;
+                
+                const feature = e.features[0];
+                const properties = feature.properties;
+                
+                // Format the popup content
+                let content = '<div class="popup-content">';
+                content += '<h3>Grid Node Information</h3>';
+                content += '<table>';
+                
+                if (properties.node_name) {
+                    content += `<tr><td>Name:</td><td>${properties.node_name}</td></tr>`;
+                }
+                
+                if (properties.node_type) {
+                    content += `<tr><td>Type:</td><td>${properties.node_type}</td></tr>`;
+                }
+                
+                if (properties.voltage_kv) {
+                    content += `<tr><td>Voltage:</td><td>${properties.voltage_kv} kV</td></tr>`;
+                }
+                
+                if (properties.status) {
+                    content += `<tr><td>Status:</td><td>${properties.status}</td></tr>`;
+                }
+                
+                content += '</table>';
+                content += '</div>';
+                
+                // Set popup coordinates and content
+                popup.setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Change cursor to pointer when hovering over grid nodes
+            map.on('mouseenter', 'grid-nodes-layer', function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            // Change cursor back when leaving grid nodes
+            map.on('mouseleave', 'grid-nodes-layer', function() {
+                map.getCanvas().style.cursor = '';
+            });
+        }
+        
+        function addGridLinesLayer() {
+            // Remove existing layers and their event handlers if they exist
+            const layerIds = ['grid-lines-existing', 'grid-lines-planned'];
+            
+            layerIds.forEach(layerId => {
+                if (map.getLayer(layerId)) {
+                    // Remove event handlers
+                    map.off('click', layerId);
+                    map.off('mouseenter', layerId);
+                    map.off('mouseleave', layerId);
+                    
+                    // Remove the layer
+                    map.removeLayer(layerId);
+                }
+            });
+            
+            // Common paint properties for both layers
+            const commonPaint = {
+                // Color by voltage level
+                'line-color': [
+                    'match',
+                    ['get', 'voltage_kv'],
+                    30, '#ffd700',   // Gold for 30kV
+                    90, '#ff8c00',   // Dark orange for 90kV
+                    225, '#ff0000',  // Red for 225kV
+                    '#999999'        // Grey for other voltages
+                ],
+                'line-width': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    5, 1,    // Thin at low zoom levels
+                    10, 2,   // Medium at medium zoom levels
+                    15, 3    // Thick at high zoom levels
+                ],
+                'line-opacity': 0.8
+            };
+            
+            // Common layout properties for both layers
+            const commonLayout = {
+                'line-cap': 'round',
+                'line-join': 'round'
+            };
+            
+            // Add layer for existing lines (solid)
+            map.addLayer({
+                'id': 'grid-lines-existing',
+                'type': 'line',
+                'source': 'grid_lines',
+                'source-layer': 'grid_lines',
+                'filter': ['==', ['get', 'status'], 'Existing'],
+                'layout': commonLayout,
+                'paint': commonPaint
+            });
+            
+            // Add layer for planned lines (dashed)
+            map.addLayer({
+                'id': 'grid-lines-planned',
+                'type': 'line',
+                'source': 'grid_lines',
+                'source-layer': 'grid_lines',
+                'filter': ['==', ['get', 'status'], 'Planned'],
+                'layout': commonLayout,
+                'paint': {
+                    ...commonPaint,
+                    'line-dasharray': [2, 2]  // Dashed line for planned lines
+                }
+            });
+            
+            // Function to create popup content for grid lines
+            function createGridLinePopupContent(properties) {
+                let content = '<div class="popup-content">';
+                content += '<h3>Transmission Line Information</h3>';
+                content += '<table>';
+                
+                if (properties.from_node_name && properties.to_node_name) {
+                    content += `<tr><td>Connection:</td><td>${properties.from_node_name} to ${properties.to_node_name}</td></tr>`;
+                }
+                
+                if (properties.voltage_kv) {
+                    content += `<tr><td>Voltage:</td><td>${properties.voltage_kv} kV</td></tr>`;
+                }
+                
+                if (properties.status) {
+                    content += `<tr><td>Status:</td><td>${properties.status}</td></tr>`;
+                }
+                
+                if (properties.project_name) {
+                    content += `<tr><td>Project:</td><td>${properties.project_name}</td></tr>`;
+                }
+                
+                content += '</table>';
+                content += '</div>';
+                return content;
+            }
+            
+            // Add popup for existing grid lines
+            map.on('click', 'grid-lines-existing', function(e) {
+                if (!e.features.length) return;
+                
+                const feature = e.features[0];
+                const content = createGridLinePopupContent(feature.properties);
+                
+                // Set popup coordinates and content
+                popup.setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Add popup for planned grid lines
+            map.on('click', 'grid-lines-planned', function(e) {
+                if (!e.features.length) return;
+                
+                const feature = e.features[0];
+                const content = createGridLinePopupContent(feature.properties);
+                
+                // Set popup coordinates and content
+                popup.setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Change cursor to pointer when hovering over existing grid lines
+            map.on('mouseenter', 'grid-lines-existing', function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            // Change cursor back when leaving existing grid lines
+            map.on('mouseleave', 'grid-lines-existing', function() {
+                map.getCanvas().style.cursor = '';
+            });
+            
+            // Change cursor to pointer when hovering over planned grid lines
+            map.on('mouseenter', 'grid-lines-planned', function() {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            // Change cursor back when leaving planned grid lines
+            map.on('mouseleave', 'grid-lines-planned', function() {
+                map.getCanvas().style.cursor = '';
+            });
+        }
+        
+        function togglePowerPlants() {
+            const showPowerPlants = document.getElementById('showPowerPlants').checked;
+            const powerPlantsLegend = document.getElementById('power-plants-legend');
+            
+            if (showPowerPlants) {
+                // Show power plants layer if it exists
+                if (map.getLayer('power-plants-layer')) {
+                    map.setLayoutProperty('power-plants-layer', 'visibility', 'visible');
+                } else {
+                    // Add the layer if it doesn't exist
+                    addPowerPlantsLayer();
+                }
+                // Show power plants legend
+                powerPlantsLegend.style.display = 'block';
+            } else {
+                // Hide power plants layer if it exists
+                if (map.getLayer('power-plants-layer')) {
+                    map.setLayoutProperty('power-plants-layer', 'visibility', 'none');
+                }
+                // Hide power plants legend
+                powerPlantsLegend.style.display = 'none';
+            }
+        }
+        
+        function toggleGridNodes() {
+            const showGridNodes = document.getElementById('showGridNodes').checked;
+            const gridNodesLegend = document.getElementById('grid-nodes-legend');
+            
+            if (showGridNodes) {
+                // Show grid nodes layer if it exists
+                if (map.getLayer('grid-nodes-layer')) {
+                    map.setLayoutProperty('grid-nodes-layer', 'visibility', 'visible');
+                } else {
+                    // Add the layer if it doesn't exist
+                    addGridNodesLayer();
+                }
+                // Show grid nodes legend
+                if (gridNodesLegend) {
+                    gridNodesLegend.style.display = 'block';
+                }
+            } else {
+                // Hide grid nodes layer if it exists
+                if (map.getLayer('grid-nodes-layer')) {
+                    map.setLayoutProperty('grid-nodes-layer', 'visibility', 'none');
+                }
+                // Hide grid nodes legend
+                if (gridNodesLegend) {
+                    gridNodesLegend.style.display = 'none';
+                }
+            }
+        }
+        
+        function toggleGridLines() {
+            const showGridLines = document.getElementById('showGridLines').checked;
+            const gridLinesLegend = document.getElementById('grid-lines-legend');
+            const gridLineLayers = ['grid-lines-existing', 'grid-lines-planned'];
+            
+            if (showGridLines) {
+                // Check if layers exist and show them, or create them if they don't exist
+                let layersExist = gridLineLayers.some(layerId => map.getLayer(layerId));
+                
+                if (layersExist) {
+                    // Show existing layers
+                    gridLineLayers.forEach(layerId => {
+                        if (map.getLayer(layerId)) {
+                            map.setLayoutProperty(layerId, 'visibility', 'visible');
+                        }
+                    });
+                } else {
+                    // Add the layers if they don't exist
+                    addGridLinesLayer();
+                }
+                
+                // Show grid lines legend
+                if (gridLinesLegend) {
+                    gridLinesLegend.style.display = 'block';
+                }
+            } else {
+                // Hide grid lines layers if they exist
+                gridLineLayers.forEach(layerId => {
+                    if (map.getLayer(layerId)) {
+                        map.setLayoutProperty(layerId, 'visibility', 'none');
+                    }
+                });
+                
+                // Hide grid lines legend
+                if (gridLinesLegend) {
+                    gridLinesLegend.style.display = 'none';
+                }
+            }
+        }
+        
+        function updateMapStyle() {
+            const property = document.getElementById('colorBy').value;
+            addBuildingsLayer(property);
+            updateLegend(property);
+        }
+
+        function updateLegend(property, items) {
+            const legend = document.getElementById('legend');
+            let title;
+
+            switch (property) {
+                case 'energy_demand_kwh':
+                    title = 'Energy Demand (kWh)';
+                    break;
+                case 'has_access':
+                    title = 'Energy Access';
+                    break;
+                case 'area_in_meters':
+                    title = 'Building Area (m²)';
+                    break;
+                default:
+                    title = 'Legend';
+            }
+
+            let html = `<h4>${title}</h4>`;
+            
+            if (items) {
+                items.forEach(item => {
+                    html += `<div><span style="background-color: ${item.color}"></span>${item.label}</div>`;
+                });
+            }
+
+            legend.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
