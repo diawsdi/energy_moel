@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Energy Visualization</title>
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Energy Grid Visualization</title>
+    <link href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css" rel="stylesheet" />
     <style>
         body { margin: 0; padding: 0; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; }
@@ -119,14 +120,23 @@
 <body>
     <div id="map"></div>
     <div id="controls">
-        <h3>Building Energy Visualization</h3>
+        <h3>Energy Grid Visualization</h3>
         <div>
             <label for="colorBy">Color by:</label>
-            <select id="colorBy" onchange="updateMapStyle()">
+            <select id="colorBy" onchange="updateMapStyle()" disabled>
                 <option value="energy_demand_kwh">Annual Energy Demand (kWh/year)</option>
                 <option value="has_access">Has Access</option>
                 <option value="area_in_meters">Building Area (m²)</option>
+                <option value="predicted_prob">Electrification Probability (%)</option>
+                <option value="consumption_kwh_month">Monthly Consumption (kWh/month)</option>
             </select>
+            
+            <div style="margin-top: 15px;">
+                <label>
+                    <input type="checkbox" id="showBuildings" onchange="toggleBuildings()">
+                    Show Buildings
+                </label>
+            </div>
             
             <div style="margin-top: 15px;">
                 <label>
@@ -147,6 +157,140 @@
                     <input type="checkbox" id="showGridLines" checked onchange="toggleGridLines()">
                     Show Transmission Lines
                 </label>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <label>
+                    <input type="checkbox" id="showUnelectrifiedClusters" checked onchange="toggleUnelectrifiedClusters()">
+                    Show Unelectrified Clusters
+                </label>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <label>
+                    <input type="checkbox" id="showUnelectrifiedBuildings" onchange="toggleUnelectrifiedBuildings()">
+                    Show Unelectrified Buildings
+                </label>
+            </div>
+            
+            <!-- Administrative Statistics Controls -->
+            <div style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+                <h4 style="margin-top: 0; color: #3498db;">Administrative Statistics</h4>
+                
+                <div style="margin-top: 10px;">
+                    <label>
+                        <input type="checkbox" id="showAdminStats" onchange="handleAdminStatsToggle()">
+                        Show Administrative Statistics
+                    </label>
+                </div>
+                <div style="margin-top: 10px;">
+                    <label>
+                        <input type="checkbox" id="showLabels" onchange="handleLabelsToggle()" checked>
+                        Show Statistics Labels
+                    </label>
+                </div>
+                
+                <div style="margin-top: 10px;">
+                    <label for="adminLevel">Administrative Level:</label>
+                    <select id="adminLevel" onchange="handleAdminLevelChange()" disabled>
+                        <option value="region">Region</option>
+                        <option value="department">Department</option>
+                        <option value="arrondissement">Arrondissement</option>
+                        <option value="commune">Commune</option>
+                    </select>
+                </div>
+                
+                <div style="margin-top: 10px;">
+                    <label for="statType">Statistic Type:</label>
+                    <select id="statType" onchange="handleStatTypeChange()" disabled>
+                        <option value="electrificationRate">Electrification Rate</option>
+                        <option value="highConfidenceRate50">High Confidence Rate (>50%)</option>
+                        <option value="highConfidenceRate60">High Confidence Rate (>60%)</option>
+                        <option value="highConfidenceRate70">High Confidence Rate (>70%)</option>
+                        <option value="highConfidenceRate80">High Confidence Rate (>80%)</option>
+                        <option value="highConfidenceRate85">High Confidence Rate (>85%)</option>
+                        <option value="highConfidenceRate90">High Confidence Rate (>90%)</option>
+                        <option value="buildingDensity">Building Density</option>
+                        <option value="avgConsumption">Avg. Monthly Consumption</option>
+                        <option value="avgEnergyDemand">Avg. Energy Demand</option>
+                        <option value="totalMonthlyConsumption">Total Monthly Consumption</option>
+                        <option value="totalYearlyDemand">Total Yearly Demand</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Advanced Filtering Controls for Unelectrified Clusters -->
+            <div id="clusterFilterControls" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+                <h4 style="margin-top: 0; color: #3498db;">Advanced Cluster Filters</h4>
+                
+                <div style="margin-top: 10px;">
+                    <label for="filterType">Filter Type:</label>
+                    <select id="filterType" onchange="updateClusterFilters()">
+                        <option value="default">No Filter (Show All)</option>
+                        <option value="distance">By Distance to Grid</option>
+                        <option value="energy">By Energy Demand</option>
+                        <option value="combined">Combined Filters</option>
+                    </select>
+                </div>
+                
+                <div id="distanceFilterControls" style="margin-top: 10px; display: none;">
+                    <label for="maxDistance">Max Distance to Grid (km):</label>
+                    <input type="range" id="maxDistance" min="0.5" max="20" step="0.5" value="5" oninput="updateDistanceValue()">
+                    <span id="distanceValue">5 km</span>
+                </div>
+                
+                <div id="energyFilterControls" style="margin-top: 10px; display: none;">
+                    <label for="minEnergy">Min Energy Demand (kWh):</label>
+                    <input type="range" id="minEnergy" min="10" max="200" step="5" value="75" oninput="updateEnergyValue()">
+                    <span id="energyValue">75 kWh</span>
+                </div>
+                
+                <div id="combinedFilterControls" style="margin-top: 10px; display: none;">
+                    <label for="filterLogic">Filter Logic:</label>
+                    <select id="filterLogic" onchange="updateClusterFilters()">
+                        <option value="and">AND (Both conditions must match)</option>
+                        <option value="or">OR (Either condition can match)</option>
+                    </select>
+                </div>
+                
+                <button id="applyFilters" style="margin-top: 10px; background-color: #3498db;" onclick="applyClusterFilters()">Apply Filters</button>
+            </div>
+            
+            <!-- Advanced Filtering Controls for Unelectrified Buildings -->
+            <div id="buildingFilterControls" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px; display: none;">
+                <h4 style="margin-top: 0; color: #3498db;">Advanced Building Filters</h4>
+                
+                <div style="margin-top: 10px;">
+                    <label for="buildingFilterType">Filter Type:</label>
+                    <select id="buildingFilterType" onchange="updateBuildingFilters()">
+                        <option value="default">No Filter (Show All)</option>
+                        <option value="consumption">By Energy Consumption</option>
+                        <option value="probability">By Electrification Probability</option>
+                        <option value="combined">Combined Filters</option>
+                    </select>
+                </div>
+                
+                <div id="consumptionFilterControls" style="margin-top: 10px; display: none;">
+                    <label for="minConsumption">Min Consumption (kWh/month):</label>
+                    <input type="range" id="minConsumption" min="5" max="20" step="0.5" value="10" oninput="updateConsumptionValue()">
+                    <span id="consumptionValue">10 kWh/month</span>
+                </div>
+                
+                <div id="probabilityFilterControls" style="margin-top: 10px; display: none;">
+                    <label for="minProbability">Min Electrification Probability:</label>
+                    <input type="range" id="minProbability" min="0.1" max="0.9" step="0.05" value="0.3" oninput="updateProbabilityValue()">
+                    <span id="probabilityValue">30%</span>
+                </div>
+                
+                <div id="buildingCombinedFilterControls" style="margin-top: 10px; display: none;">
+                    <label for="buildingFilterLogic">Filter Logic:</label>
+                    <select id="buildingFilterLogic">
+                        <option value="and">AND (Both conditions must match)</option>
+                        <option value="or">OR (Either condition can match)</option>
+                    </select>
+                </div>
+                
+                <button id="applyBuildingFilters" style="margin-top: 10px; background-color: #3498db;" onclick="applyBuildingFilters()">Apply Filters</button>
             </div>
         </div>
     </div>
@@ -177,8 +321,35 @@
         <div style="margin-top: 8px;"><span style="border-top: 3px solid #333;"></span>Existing</div>
         <div><span style="border-top: 3px dashed #333;"></span>Planned</div>
     </div>
+    
+    <div class="map-overlay legend" id="unelectrified-clusters-legend" style="bottom: 10px; top: auto; right: 430px;">
+        <h3>Unelectrified Clusters</h3>
+        <div><span style="background-color: transparent; border: 2px solid rgba(255, 0, 0, 1);"></span>High Energy Demand</div>
+        <div><span style="background-color: transparent; border: 2px solid rgba(255, 165, 0, 1);"></span>Medium Energy Demand</div>
+        <div><span style="background-color: transparent; border: 2px solid rgba(255, 255, 0, 1);"></span>Low Energy Demand</div>
+    </div>
+    
+    <div class="map-overlay legend" id="probability-legend" style="bottom: 10px; top: auto; right: 630px; display: none;">
+        <h3>Electrification Probability</h3>
+        <div><span style="background-color: #d73027;"></span>0-30%</div>
+        <div><span style="background-color: #fc8d59;"></span>30-50%</div>
+        <div><span style="background-color: #fee090;"></span>50-70%</div>
+        <div><span style="background-color: #e0f3f8;"></span>70-90%</div>
+        <div><span style="background-color: #4575b4;"></span>90-100%</div>
+    </div>
+    
+    <div class="map-overlay legend" id="consumption-legend" style="bottom: 10px; top: auto; right: 630px; display: none;">
+        <h3>Monthly Consumption</h3>
+        <div><span style="background-color: #2166ac;"></span>0-5 kWh/month</div>
+        <div><span style="background-color: #4393c3;"></span>5-10 kWh/month</div>
+        <div><span style="background-color: #92c5de;"></span>10-15 kWh/month</div>
+        <div><span style="background-color: #fddbc7;"></span>15-20 kWh/month</div>
+        <div><span style="background-color: #d6604d;"></span>20-30 kWh/month</div>
+        <div><span style="background-color: #b2182b;"></span>30+ kWh/month</div>
+    </div>
 
     <script src="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.js"></script>
+    <script src="./admin_stats.js"></script>
     <script>
         // Initialize popup for feature information
         const popup = new maplibregl.Popup({
@@ -201,6 +372,8 @@
                         attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     }
                 },
+                // Use Mapbox's font service instead
+                glyphs: "https://api.mapbox.com/fonts/v1/mapbox/{fontstack}/{range}.pbf?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw",
                 layers: [
                     {
                         id: 'dark-map-tiles',
@@ -219,10 +392,13 @@
         map.showTileBoundaries = false;
 
         map.on('load', function() {
+            // Initialize the administrative statistics module
+            initAdminStats(map);
+            
             // Add the buildings source
             map.addSource('buildings', {
                 type: 'vector',
-                url: 'http://localhost:3000/buildings_energy',  // Use the TileJSON endpoint
+                url: 'http://localhost:3015/buildings_energy',  // Updated port from 3010 to 3015
                 minzoom: 0,  // Allow viewing at all zoom levels
                 maxzoom: 22  // Maximum zoom level as requested
             });
@@ -230,7 +406,7 @@
             // Add the power plants source
             map.addSource('power_plants', {
                 type: 'vector',
-                url: 'http://localhost:3000/power_plants',  // Use the TileJSON endpoint
+                url: 'http://localhost:3015/power_plants',  // Updated port from 3000 to 3015
                 minzoom: 0,
                 maxzoom: 22
             });
@@ -238,7 +414,7 @@
             // Add the grid nodes source
             map.addSource('grid_nodes', {
                 type: 'vector',
-                url: 'http://localhost:3000/grid_nodes',  // Use the TileJSON endpoint
+                url: 'http://localhost:3015/grid_nodes',  // Updated port from 3000 to 3015
                 minzoom: 0,
                 maxzoom: 22
             });
@@ -246,7 +422,45 @@
             // Add the grid lines source
             map.addSource('grid_lines', {
                 type: 'vector',
-                url: 'http://localhost:3000/grid_lines',  // Use the TileJSON endpoint
+                url: 'http://localhost:3015/grid_lines',  // Updated port from 3000 to 3015
+                minzoom: 0,
+                maxzoom: 22
+            });
+            
+            // Add the unelectrified clusters source
+            map.addSource('unelectrified_clusters', {
+                type: 'vector',
+                url: 'http://localhost:3015/unelectrified_clusters',
+                minzoom: 0,
+                maxzoom: 14
+            });
+
+            // Add sources for filtered clusters
+            map.addSource('clusters_by_grid_distance', {
+                type: 'vector',
+                url: 'http://localhost:3015/clusters_by_grid_distance_zxy',
+                minzoom: 0,
+                maxzoom: 14
+            });
+            
+            map.addSource('clusters_by_energy_demand', {
+                type: 'vector',
+                url: 'http://localhost:3015/clusters_by_energy_demand_zxy',
+                minzoom: 0,
+                maxzoom: 14
+            });
+            
+            map.addSource('clusters_combined_filter', {
+                type: 'vector',
+                url: 'http://localhost:3015/clusters_combined_filter_zxy',
+                minzoom: 0,
+                maxzoom: 14
+            });
+
+            // Add the unelectrified buildings source
+            map.addSource('unelectrified_buildings', {
+                type: 'vector',
+                url: 'http://localhost:3015/unelectrified_buildings',
                 minzoom: 0,
                 maxzoom: 22
             });
@@ -257,10 +471,8 @@
                 alert('Error loading map data: ' + e.error.message);
             });
             
-
-
-            // Add the buildings layer with default style (energy demand)
-            addBuildingsLayer('energy_demand_kwh');
+            // Comment out the buildings layer initialization - disabled by default
+            // addBuildingsLayer('energy_demand_kwh');
             
             // Add the power plants layer
             addPowerPlantsLayer();
@@ -271,12 +483,79 @@
             // Add the grid lines layer
             addGridLinesLayer();
             
+            // Add the unelectrified clusters layer
+            addUnelectrifiedClustersLayer();
+            
             // Create a legend
             updateLegend('energy_demand_kwh');
             
-
-
+            // Add cluster event handlers
+            addClusterEventHandlers();
         });
+        
+        // Function to add event handlers for cluster layers
+        function addClusterEventHandlers() {
+            // Add click event for clusters
+            map.on('click', 'unelectrified-clusters-layer', (e) => {
+                const properties = e.features[0].properties;
+                
+                // Create popup content with distance to grid if available
+                let distanceInfo = '';
+                if (properties.distance_to_grid_km !== undefined) {
+                    distanceInfo = `
+                        <tr>
+                            <td>Distance to Grid:</td>
+                            <td>${parseFloat(properties.distance_to_grid_km).toFixed(2)} km</td>
+                        </tr>
+                    `;
+                }
+                
+                let popupContent = `
+                    <div class="popup-content">
+                        <h3>Unelectrified Cluster</h3>
+                        <table>
+                            <tr>
+                                <td>Cluster ID:</td>
+                                <td>${properties.cluster_id}</td>
+                            </tr>
+                            <tr>
+                                <td>Total Buildings:</td>
+                                <td>${properties.total_buildings}</td>
+                            </tr>
+                            <tr>
+                                <td>Total Energy Demand:</td>
+                                <td>${parseFloat(properties.total_energy_kwh).toFixed(2)} kWh/year</td>
+                            </tr>
+                            <tr>
+                                <td>Average Energy Demand:</td>
+                                <td>${parseFloat(properties.avg_energy_kwh).toFixed(2)} kWh/year per building</td>
+                            </tr>
+                            ${distanceInfo}
+                            <tr>
+                                <td>Energy Category:</td>
+                                <td>${properties.energy_demand_category || 'Unknown'}</td>
+                            </tr>
+                        </table>
+                    </div>
+                `;
+                
+                // Create and display the popup
+                new maplibregl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(popupContent)
+                    .addTo(map);
+            });
+            
+            // Change cursor to pointer when hovering over clusters
+            map.on('mouseenter', 'unelectrified-clusters-layer', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            
+            // Change cursor back when leaving clusters
+            map.on('mouseleave', 'unelectrified-clusters-layer', () => {
+                map.getCanvas().style.cursor = '';
+            });
+        }
 
         function addBuildingsLayer(property) {
             // Remove existing layers and their event handlers if they exist
@@ -360,6 +639,53 @@
                     { color: '#31a354', label: '200 m²' },
                     { color: '#006837', label: '500+ m²' }
                 ];
+            } else if (property === 'predicted_prob') {
+                // Color based on predicted probability of electrification
+                fillColor = [
+                    'interpolate',
+                    ['linear'],
+                    ['case',
+                        ['has', 'predicted_prob'], ['to-number', ['get', 'predicted_prob']],
+                        0
+                    ],
+                    0, '#d73027',    // Very low probability (dark red)
+                    0.3, '#fc8d59',  // Low probability (orange red)
+                    0.5, '#fee090',  // Medium probability (light orange)
+                    0.7, '#e0f3f8',  // High probability (light blue)
+                    0.9, '#91bfdb',  // Very high probability (medium blue)
+                    1.0, '#4575b4'   // Certain probability (dark blue)
+                ];
+                legendItems = [
+                    { color: '#d73027', label: '0-30% probability' },
+                    { color: '#fc8d59', label: '30-50% probability' },
+                    { color: '#fee090', label: '50-70% probability' },
+                    { color: '#e0f3f8', label: '70-90% probability' },
+                    { color: '#4575b4', label: '90-100% probability' }
+                ];
+            } else if (property === 'consumption_kwh_month') {
+                // Color based on monthly energy consumption
+                fillColor = [
+                    'interpolate',
+                    ['linear'],
+                    ['case',
+                        ['has', 'consumption_kwh_month'], ['to-number', ['get', 'consumption_kwh_month']],
+                        0
+                    ],
+                    0, '#2166ac',    // Very low consumption (dark blue)
+                    5, '#4393c3',    // Low consumption (medium blue)
+                    10, '#92c5de',   // Medium-low consumption (light blue)
+                    15, '#fddbc7',   // Medium-high consumption (light red)
+                    20, '#d6604d',   // High consumption (medium red)
+                    30, '#b2182b'    // Very high consumption (dark red)
+                ];
+                legendItems = [
+                    { color: '#2166ac', label: '0-5 kWh/month' },
+                    { color: '#4393c3', label: '5-10 kWh/month' },
+                    { color: '#92c5de', label: '10-15 kWh/month' },
+                    { color: '#fddbc7', label: '15-20 kWh/month' },
+                    { color: '#d6604d', label: '20-30 kWh/month' },
+                    { color: '#b2182b', label: '30+ kWh/month' }
+                ];
             }
 
             // Add the main buildings layer (polygons) - better for higher zoom levels
@@ -437,6 +763,30 @@
                     }
                 }
                 
+                // Show monthly consumption if available
+                if (properties.consumption_kwh_month !== undefined && properties.consumption_kwh_month !== null) {
+                    const consumption = parseFloat(properties.consumption_kwh_month);
+                    if (!isNaN(consumption)) {
+                        content += `<tr><td>Monthly Consumption:</td><td>${consumption.toFixed(2)} kWh/month</td></tr>`;
+                    }
+                }
+                
+                // Show consumption uncertainty (std) if available
+                if (properties.std_consumption_kwh_month !== undefined && properties.std_consumption_kwh_month !== null) {
+                    const std = parseFloat(properties.std_consumption_kwh_month);
+                    if (!isNaN(std)) {
+                        content += `<tr><td>Consumption Uncertainty:</td><td>±${std.toFixed(2)} kWh/month</td></tr>`;
+                    }
+                }
+                
+                // Show electrification probability if available
+                if (properties.predicted_prob !== undefined && properties.predicted_prob !== null) {
+                    const prob = parseFloat(properties.predicted_prob);
+                    if (!isNaN(prob)) {
+                        content += `<tr><td>Electrification Probability:</td><td>${(prob * 100).toFixed(1)}%</td></tr>`;
+                    }
+                }
+                
                 // Always show access status if available
                 if (properties.has_access !== undefined && properties.has_access !== null) {
                     // Convert to boolean if it's a string
@@ -446,6 +796,10 @@
                 
                 if (properties.year) {
                     content += `<tr><td>Year:</td><td>${properties.year}</td></tr>`;
+                }
+                
+                if (properties.origin) {
+                    content += `<tr><td>Data Source:</td><td>${properties.origin}</td></tr>`;
                 }
                 
                 content += '</table>';
@@ -505,6 +859,30 @@
                     }
                 }
                 
+                // Show monthly consumption if available
+                if (properties.consumption_kwh_month !== undefined && properties.consumption_kwh_month !== null) {
+                    const consumption = parseFloat(properties.consumption_kwh_month);
+                    if (!isNaN(consumption)) {
+                        content += `<tr><td>Monthly Consumption:</td><td>${consumption.toFixed(2)} kWh/month</td></tr>`;
+                    }
+                }
+                
+                // Show consumption uncertainty (std) if available
+                if (properties.std_consumption_kwh_month !== undefined && properties.std_consumption_kwh_month !== null) {
+                    const std = parseFloat(properties.std_consumption_kwh_month);
+                    if (!isNaN(std)) {
+                        content += `<tr><td>Consumption Uncertainty:</td><td>±${std.toFixed(2)} kWh/month</td></tr>`;
+                    }
+                }
+                
+                // Show electrification probability if available
+                if (properties.predicted_prob !== undefined && properties.predicted_prob !== null) {
+                    const prob = parseFloat(properties.predicted_prob);
+                    if (!isNaN(prob)) {
+                        content += `<tr><td>Electrification Probability:</td><td>${(prob * 100).toFixed(1)}%</td></tr>`;
+                    }
+                }
+                
                 // Always show access status if available
                 if (properties.has_access !== undefined && properties.has_access !== null) {
                     // Convert to boolean if it's a string
@@ -514,6 +892,10 @@
                 
                 if (properties.year) {
                     content += `<tr><td>Year:</td><td>${properties.year}</td></tr>`;
+                }
+                
+                if (properties.origin) {
+                    content += `<tr><td>Data Source:</td><td>${properties.origin}</td></tr>`;
                 }
                 
                 content += '</table>';
@@ -726,7 +1108,7 @@
         
         function addGridLinesLayer() {
             // Remove existing layers and their event handlers if they exist
-            const layerIds = ['grid-lines-existing', 'grid-lines-planned'];
+            const layerIds = ['grid-lines-existing', 'grid-lines-planned', 'grid-lines-layer'];
             
             layerIds.forEach(layerId => {
                 if (map.getLayer(layerId)) {
@@ -740,8 +1122,17 @@
                 }
             });
             
-            // Common paint properties for both layers
-            const commonPaint = {
+            // Add single layer for all grid lines
+            map.addLayer({
+                'id': 'grid-lines-layer',
+                'type': 'line',
+                'source': 'grid_lines',
+                'source-layer': 'grid_lines',
+                'layout': {
+                    'line-cap': 'round',
+                    'line-join': 'round'
+                },
+                'paint': {
                 // Color by voltage level
                 'line-color': [
                     'match',
@@ -760,36 +1151,6 @@
                     15, 3    // Thick at high zoom levels
                 ],
                 'line-opacity': 0.8
-            };
-            
-            // Common layout properties for both layers
-            const commonLayout = {
-                'line-cap': 'round',
-                'line-join': 'round'
-            };
-            
-            // Add layer for existing lines (solid)
-            map.addLayer({
-                'id': 'grid-lines-existing',
-                'type': 'line',
-                'source': 'grid_lines',
-                'source-layer': 'grid_lines',
-                'filter': ['==', ['get', 'status'], 'Existing'],
-                'layout': commonLayout,
-                'paint': commonPaint
-            });
-            
-            // Add layer for planned lines (dashed)
-            map.addLayer({
-                'id': 'grid-lines-planned',
-                'type': 'line',
-                'source': 'grid_lines',
-                'source-layer': 'grid_lines',
-                'filter': ['==', ['get', 'status'], 'Planned'],
-                'layout': commonLayout,
-                'paint': {
-                    ...commonPaint,
-                    'line-dasharray': [2, 2]  // Dashed line for planned lines
                 }
             });
             
@@ -799,20 +1160,20 @@
                 content += '<h3>Transmission Line Information</h3>';
                 content += '<table>';
                 
-                if (properties.from_node_name && properties.to_node_name) {
-                    content += `<tr><td>Connection:</td><td>${properties.from_node_name} to ${properties.to_node_name}</td></tr>`;
-                }
-                
                 if (properties.voltage_kv) {
                     content += `<tr><td>Voltage:</td><td>${properties.voltage_kv} kV</td></tr>`;
                 }
                 
-                if (properties.status) {
-                    content += `<tr><td>Status:</td><td>${properties.status}</td></tr>`;
+                if (properties.layer) {
+                    content += `<tr><td>Layer:</td><td>${properties.layer}</td></tr>`;
                 }
                 
-                if (properties.project_name) {
-                    content += `<tr><td>Project:</td><td>${properties.project_name}</td></tr>`;
+                if (properties.entity) {
+                    content += `<tr><td>Entity:</td><td>${properties.entity}</td></tr>`;
+                }
+                
+                if (properties.length) {
+                    content += `<tr><td>Length:</td><td>${properties.length} km</td></tr>`;
                 }
                 
                 content += '</table>';
@@ -820,8 +1181,8 @@
                 return content;
             }
             
-            // Add popup for existing grid lines
-            map.on('click', 'grid-lines-existing', function(e) {
+            // Add popup for grid lines
+            map.on('click', 'grid-lines-layer', function(e) {
                 if (!e.features.length) return;
                 
                 const feature = e.features[0];
@@ -833,36 +1194,219 @@
                     .addTo(map);
             });
             
-            // Add popup for planned grid lines
-            map.on('click', 'grid-lines-planned', function(e) {
-                if (!e.features.length) return;
-                
-                const feature = e.features[0];
-                const content = createGridLinePopupContent(feature.properties);
-                
-                // Set popup coordinates and content
-                popup.setLngLat(e.lngLat)
-                    .setHTML(content)
-                    .addTo(map);
-            });
-            
-            // Change cursor to pointer when hovering over existing grid lines
-            map.on('mouseenter', 'grid-lines-existing', function() {
+            // Change cursor to pointer when hovering over grid lines
+            map.on('mouseenter', 'grid-lines-layer', function() {
                 map.getCanvas().style.cursor = 'pointer';
             });
             
-            // Change cursor back when leaving existing grid lines
-            map.on('mouseleave', 'grid-lines-existing', function() {
+            // Change cursor back when leaving grid lines
+            map.on('mouseleave', 'grid-lines-layer', function() {
                 map.getCanvas().style.cursor = '';
             });
+        }
+        
+        // Global variables to track current filter states
+        let currentClusterFilter = {
+            type: 'default',
+            maxDistance: 5.0,
+            minEnergy: 75.0,
+            filterLogic: 'and'
+        };
+        
+        let currentBuildingFilter = {
+            type: 'default',
+            minConsumption: 10.0,
+            minProbability: 0.3,
+            filterLogic: 'and'
+        };
+        
+        function addUnelectrifiedClustersLayer(filterType = 'default', filterParams = {}) {
+            // Remove existing layers and their event handlers
+            ['unelectrified-clusters-layer', 'unelectrified-clusters-outline'].forEach(layerId => {
+                if (map.getLayer(layerId)) {
+                    // Remove event handlers
+                    map.off('click', layerId);
+                    map.off('mouseenter', layerId);
+                    map.off('mouseleave', layerId);
+                    
+                    // Remove the layer
+                    map.removeLayer(layerId);
+                }
+            });
             
-            // Change cursor to pointer when hovering over planned grid lines
-            map.on('mouseenter', 'grid-lines-planned', function() {
+            // Determine the source and source-layer based on filter type
+            let sourceConfig = {
+                source: 'unelectrified_clusters',
+                'source-layer': 'unelectrified_clusters',
+                filter: ['all'] // Default filter that includes everything
+            };
+            
+            // Apply filters based on filter type
+            if (filterType === 'distance') {
+                const maxDistance = filterParams.maxDistance || 5.0;
+                sourceConfig = {
+                    source: 'unelectrified_clusters',
+                    'source-layer': 'unelectrified_clusters',
+                    filter: ['<=', ['get', 'distance_to_grid_km'], maxDistance]
+                };
+            } else if (filterType === 'energy') {
+                const minEnergy = filterParams.minEnergy || 75.0;
+                sourceConfig = {
+                    source: 'unelectrified_clusters',
+                    'source-layer': 'unelectrified_clusters',
+                    filter: ['>=', ['get', 'total_energy_kwh'], minEnergy]
+                };
+            } else if (filterType === 'combined') {
+                const maxDistance = filterParams.maxDistance || 5.0;
+                const minEnergy = filterParams.minEnergy || 75.0;
+                const filterLogic = filterParams.filterLogic || 'and';
+                
+                if (filterLogic === 'and') {
+                    sourceConfig = {
+                        source: 'unelectrified_clusters',
+                        'source-layer': 'unelectrified_clusters',
+                        filter: ['all',
+                            ['<=', ['get', 'distance_to_grid_km'], maxDistance],
+                            ['>=', ['get', 'total_energy_kwh'], minEnergy]
+                        ]
+                    };
+                } else { // 'or' logic
+                    sourceConfig = {
+                        source: 'unelectrified_clusters',
+                        'source-layer': 'unelectrified_clusters',
+                        filter: ['any',
+                            ['<=', ['get', 'distance_to_grid_km'], maxDistance],
+                            ['>=', ['get', 'total_energy_kwh'], minEnergy]
+                        ]
+                    };
+                }
+            }
+            
+            // Add the unelectrified clusters layer with fill
+            map.addLayer({
+                'id': 'unelectrified-clusters-layer',
+                'type': 'fill',
+                'source': sourceConfig.source,
+                'source-layer': sourceConfig['source-layer'],
+                'filter': sourceConfig.filter,
+                'paint': {
+                    // Very subtle fill color based on total energy demand
+                    'fill-color': [
+                        'case',
+                        ['>', ['get', 'total_energy_kwh'], 150], 'rgba(255, 0, 0, 0.05)',     // high demand (> 150 kWh)
+                        ['>', ['get', 'total_energy_kwh'], 75], 'rgba(255, 165, 0, 0.05)',    // medium demand (75-150 kWh)
+                        'rgba(255, 255, 0, 0.05)'                                              // low demand (< 75 kWh)
+                    ],
+                    'fill-opacity': 0.8
+                }
+            });
+            
+            // Add outline layer
+            map.addLayer({
+                'id': 'unelectrified-clusters-outline',
+                'type': 'line',
+                'source': sourceConfig.source,
+                'source-layer': sourceConfig['source-layer'],
+                'filter': sourceConfig.filter,
+                'paint': {
+                    // Color by energy demand directly
+                    'line-color': [
+                        'case',
+                        ['>', ['get', 'total_energy_kwh'], 150], 'rgba(255, 0, 0, 0.9)',     // high demand (> 150 kWh)
+                        ['>', ['get', 'total_energy_kwh'], 75], 'rgba(255, 165, 0, 0.9)',    // medium demand (75-150 kWh)
+                        'rgba(255, 255, 0, 0.9)'                                             // low demand (< 75 kWh)
+                    ],
+                    'line-width': 2,
+                    'line-opacity': 0.9
+                }
+            });
+            
+            // Log a few properties to debug 
+            map.on('data', function(e) {
+                if (e.sourceId === 'unelectrified_clusters' && e.isSourceLoaded && !window.debugLogDone) {
+                    window.debugLogDone = true;
+                    try {
+                        // Debug: Check a feature's properties
+                        const features = map.querySourceFeatures('unelectrified_clusters', {
+                            sourceLayer: 'unelectrified_clusters',
+                            limit: 5
+                        });
+                        if (features.length > 0) {
+                            console.log('Sample unelectrified cluster properties:', features[0].properties);
+                        } else {
+                            console.log('No features found for debugging');
+                        }
+                    } catch (error) {
+                        console.error('Debug error:', error);
+                    }
+                }
+            });
+            
+            // Add popup for unelectrified clusters
+            map.on('click', 'unelectrified-clusters-layer', function(e) {
+                if (!e.features.length) return;
+                
+                const feature = e.features[0];
+                const properties = feature.properties;
+                
+                console.log('Clicked cluster properties:', properties);
+                
+                // Format the popup content
+                let content = '<div class="popup-content">';
+                content += '<h3>Unelectrified Cluster Information</h3>';
+                content += '<table>';
+                
+                if (properties.cluster_id !== undefined) {
+                    content += `<tr><td>Cluster ID:</td><td>${properties.cluster_id}</td></tr>`;
+                }
+                
+                if (properties.total_buildings !== undefined) {
+                    content += `<tr><td>Total Buildings:</td><td>${properties.total_buildings}</td></tr>`;
+                }
+                
+                if (properties.total_energy_kwh !== undefined) {
+                    const energy = parseFloat(properties.total_energy_kwh);
+                    if (!isNaN(energy)) {
+                        content += `<tr><td>Total Energy Demand:</td><td>${Math.round(energy).toLocaleString()} kWh/year</td></tr>`;
+                    }
+                }
+                
+                if (properties.avg_energy_kwh !== undefined) {
+                    const avgEnergy = parseFloat(properties.avg_energy_kwh);
+                    if (!isNaN(avgEnergy)) {
+                        content += `<tr><td>Average Energy Demand:</td><td>${Math.round(avgEnergy).toLocaleString()} kWh/year per building</td></tr>`;
+                    }
+                }
+                
+                if (properties.total_energy_kwh !== undefined) {
+                    // Calculate category from total_energy_kwh
+                    const energy = parseFloat(properties.total_energy_kwh);
+                    let category = 'Low';
+                    if (energy > 150) category = 'High';
+                    else if (energy > 75) category = 'Medium';
+                    content += `<tr><td>Demand Category:</td><td>${category}</td></tr>`;
+                }
+                
+                if (properties.year) {
+                    content += `<tr><td>Year:</td><td>${properties.year}</td></tr>`;
+                }
+                
+                content += '</table>';
+                content += '</div>';
+                
+                // Set popup coordinates and content
+                popup.setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Change cursor to pointer when hovering over clusters
+            map.on('mouseenter', 'unelectrified-clusters-layer', function() {
                 map.getCanvas().style.cursor = 'pointer';
             });
             
-            // Change cursor back when leaving planned grid lines
-            map.on('mouseleave', 'grid-lines-planned', function() {
+            // Change cursor back when leaving clusters
+            map.on('mouseleave', 'unelectrified-clusters-layer', function() {
                 map.getCanvas().style.cursor = '';
             });
         }
@@ -922,40 +1466,617 @@
         function toggleGridLines() {
             const showGridLines = document.getElementById('showGridLines').checked;
             const gridLinesLegend = document.getElementById('grid-lines-legend');
-            const gridLineLayers = ['grid-lines-existing', 'grid-lines-planned'];
             
             if (showGridLines) {
-                // Check if layers exist and show them, or create them if they don't exist
-                let layersExist = gridLineLayers.some(layerId => map.getLayer(layerId));
-                
-                if (layersExist) {
-                    // Show existing layers
-                    gridLineLayers.forEach(layerId => {
-                        if (map.getLayer(layerId)) {
-                            map.setLayoutProperty(layerId, 'visibility', 'visible');
-                        }
-                    });
+                // Show grid lines layer if it exists
+                if (map.getLayer('grid-lines-layer')) {
+                    map.setLayoutProperty('grid-lines-layer', 'visibility', 'visible');
                 } else {
-                    // Add the layers if they don't exist
+                    // Add the layer if it doesn't exist
                     addGridLinesLayer();
                 }
-                
                 // Show grid lines legend
-                if (gridLinesLegend) {
                     gridLinesLegend.style.display = 'block';
-                }
             } else {
-                // Hide grid lines layers if they exist
-                gridLineLayers.forEach(layerId => {
-                    if (map.getLayer(layerId)) {
-                        map.setLayoutProperty(layerId, 'visibility', 'none');
+                // Hide grid lines layer if it exists
+                if (map.getLayer('grid-lines-layer')) {
+                    map.setLayoutProperty('grid-lines-layer', 'visibility', 'none');
+                }
+                // Hide grid lines legend
+                gridLinesLegend.style.display = 'none';
+            }
+        }
+        
+        function toggleUnelectrifiedClusters() {
+            const showUnelectrifiedClusters = document.getElementById('showUnelectrifiedClusters').checked;
+            const unelectrifiedClustersLegend = document.getElementById('unelectrified-clusters-legend');
+            const clusterFilterControls = document.getElementById('clusterFilterControls');
+            
+            if (showUnelectrifiedClusters) {
+                // Show unelectrified clusters layers if they exist
+                if (map.getLayer('unelectrified-clusters-layer')) {
+                    map.setLayoutProperty('unelectrified-clusters-layer', 'visibility', 'visible');
+                    
+                    // Also show the outline layer if it exists
+                    if (map.getLayer('unelectrified-clusters-outline')) {
+                        map.setLayoutProperty('unelectrified-clusters-outline', 'visibility', 'visible');
+                    }
+                } else {
+                    // Add the layers if they don't exist
+                    addUnelectrifiedClustersLayer(currentClusterFilter.type, {
+                        maxDistance: currentClusterFilter.maxDistance,
+                        minEnergy: currentClusterFilter.minEnergy,
+                        filterLogic: currentClusterFilter.filterLogic
+                    });
+                }
+                // Show unelectrified clusters legend
+                unelectrifiedClustersLegend.style.display = 'block';
+                // Show filter controls
+                clusterFilterControls.style.display = 'block';
+            } else {
+                // Hide unelectrified clusters layers if they exist
+                if (map.getLayer('unelectrified-clusters-layer')) {
+                    map.setLayoutProperty('unelectrified-clusters-layer', 'visibility', 'none');
+                    
+                    // Also hide the outline layer if it exists
+                    if (map.getLayer('unelectrified-clusters-outline')) {
+                        map.setLayoutProperty('unelectrified-clusters-outline', 'visibility', 'none');
+                    }
+                }
+                // Hide unelectrified clusters legend
+                unelectrifiedClustersLegend.style.display = 'none';
+                // Hide filter controls
+                clusterFilterControls.style.display = 'none';
+            }
+        }
+        
+        function toggleUnelectrifiedBuildings() {
+            const isChecked = document.getElementById('showUnelectrifiedBuildings').checked;
+            const buildingFilterControls = document.getElementById('buildingFilterControls');
+            
+            if (isChecked) {
+                // Show filter controls
+                buildingFilterControls.style.display = 'block';
+                
+                // Apply current filters or default
+                addUnelectrifiedBuildingsLayer(currentBuildingFilter.type, currentBuildingFilter);
+                
+                // Show the legend
+                showUnelectrifiedBuildingsLegend();
+            } else {
+                // Hide filter controls
+                buildingFilterControls.style.display = 'none';
+                
+                // Remove building layers
+                removeUnelectrifiedBuildingsLayers();
+                
+                // Hide the legend
+                const legend = document.getElementById('unelectrified-buildings-legend');
+                if (legend) legend.style.display = 'none';
+            }
+        }
+        
+        function addUnelectrifiedBuildingsLayer(filterType = 'default', filterParams = {}) {
+            // Remove existing layers and their event handlers
+            removeUnelectrifiedBuildingsLayers();
+            
+            // First, let's create a special source for very low zoom levels (0-3)
+            // This will use static markers rather than vector tiles for guaranteed visibility
+            if (!map.getSource('static_building_markers')) {
+                // Add 5 static markers at different locations in Senegal
+                map.addSource('static_building_markers', {
+                    'type': 'geojson',
+                    'data': {
+                        'type': 'FeatureCollection',
+                        'features': [
+                            // These are just example coordinates within Senegal
+                            { 'type': 'Feature', 'properties': { 'marker-size': 'large', 'marker-color': '#ff0000' }, 
+                              'geometry': { 'type': 'Point', 'coordinates': [-15.0, 14.5] } },
+                            { 'type': 'Feature', 'properties': { 'marker-size': 'large', 'marker-color': '#ff0000' }, 
+                              'geometry': { 'type': 'Point', 'coordinates': [-16.0, 15.0] } },
+                            { 'type': 'Feature', 'properties': { 'marker-size': 'large', 'marker-color': '#ff0000' }, 
+                              'geometry': { 'type': 'Point', 'coordinates': [-14.5, 13.8] } },
+                            { 'type': 'Feature', 'properties': { 'marker-size': 'large', 'marker-color': '#ff0000' }, 
+                              'geometry': { 'type': 'Point', 'coordinates': [-13.5, 14.0] } },
+                            { 'type': 'Feature', 'properties': { 'marker-size': 'large', 'marker-color': '#ff0000' }, 
+                              'geometry': { 'type': 'Point', 'coordinates': [-16.5, 13.0] } }
+                        ]
                     }
                 });
                 
-                // Hide grid lines legend
-                if (gridLinesLegend) {
-                    gridLinesLegend.style.display = 'none';
+                // Add a visible layer for these markers at very low zoom
+                map.addLayer({
+                    'id': 'static-building-markers',
+                    'type': 'circle',
+                    'source': 'static_building_markers',
+                    'maxzoom': 4,  // Only show at very low zoom levels
+                    'paint': {
+                        'circle-radius': 10,
+                        'circle-color': '#ff0000',
+                        'circle-stroke-width': 2,
+                        'circle-stroke-color': '#ffffff'
+                    }
+                });
+            }
+            
+            let sourceId = 'unelectrified_buildings';
+            let vectorLayerName = 'unelectrified_buildings';
+            
+            // Set up filtering parameters based on UI controls - with null checks
+            let useFiltering = false; // Default to false if element not found
+            const filterCheckbox = document.getElementById('buildingFilterCheckbox');
+            if (filterCheckbox) {
+                useFiltering = filterCheckbox.checked;
+            }
+            
+            // Use the existing filterType parameter instead of redeclaring it
+            if (filterType === 'default') {
+                const filterTypeElement = document.querySelector('input[name="buildingFilterType"]:checked');
+                if (filterTypeElement) {
+                    filterType = filterTypeElement.value;
                 }
+            }
+            
+            // Default values in case elements aren't found
+            let minConsumption = 10.0;
+            let minProbability = 0.3;
+            
+            const consumptionRange = document.getElementById('minConsumptionRange');
+            if (consumptionRange) {
+                minConsumption = consumptionRange.value;
+            }
+            
+            const probabilityRange = document.getElementById('minProbabilityRange');
+            if (probabilityRange) {
+                minProbability = probabilityRange.value;
+            }
+            
+            // Check if filtering is enabled and update source accordingly
+            if (useFiltering) {
+                if (filterType === 'consumption') {
+                    sourceId = 'buildings_by_consumption';
+                    vectorLayerName = 'buildings_by_consumption';
+                    
+                    // Add vector tile source for consumption filtering
+                    map.addSource(sourceId, {
+                        type: 'vector',
+                        tiles: [`http://localhost:3015/buildings_by_consumption/{z}/{x}/{y}?min_consumption=${minConsumption}`],
+                        minzoom: 0,
+                        maxzoom: 22
+                    });
+                } else if (filterType === 'probability') {
+                    sourceId = 'buildings_by_probability';
+                    vectorLayerName = 'buildings_by_probability';
+                    
+                    // Add vector tile source for probability filtering
+                    map.addSource(sourceId, {
+                        type: 'vector',
+                        tiles: [`http://localhost:3015/buildings_by_probability/{z}/{x}/{y}?min_probability=${minProbability}`],
+                        minzoom: 0,
+                        maxzoom: 22
+                    });
+                } else if (filterType === 'combined') {
+                    sourceId = 'buildings_combined_filter';
+                    vectorLayerName = 'buildings_combined_filter';
+                    
+                    // Determine logical operator (AND/OR) based on UI
+                    let logicalOperator = document.querySelector('input[name="combinedFilterType"]:checked').value;
+                    
+                    // Add vector tile source for combined filtering
+                    map.addSource(sourceId, {
+                        type: 'vector',
+                        tiles: [`http://localhost:3015/buildings_combined_filter/{z}/{x}/{y}?min_consumption=${minConsumption}&min_probability=${minProbability}&filter_type=${logicalOperator}`],
+                        minzoom: 0,
+                        maxzoom: 22
+                    });
+                }
+            } else {
+                // If no filtering, use default unelectrified buildings source
+                if (!map.getSource(sourceId)) {
+                    map.addSource(sourceId, {
+                        type: 'vector',
+                        tiles: ['http://localhost:3015/unelectrified_buildings/{z}/{x}/{y}'],
+                        minzoom: 0,
+                        maxzoom: 22
+                    });
+                }
+            }
+            
+            // Add a circle layer for low zoom levels - made much more visible
+            map.addLayer({
+                'id': 'unelectrified-buildings-circles',
+                'type': 'circle',
+                'source': sourceId,
+                'source-layer': vectorLayerName,
+                'maxzoom': 9,  // Only show circles up to zoom level 9
+                'paint': {
+                    'circle-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'consumption_kwh_month'],
+                        0, '#2166ac',       // Low consumption (blue)
+                        10, '#92c5de',      // Medium-low consumption (light blue)
+                        15, '#f4a582',      // Medium-high consumption (light red)
+                        20, '#b2182b'       // High consumption (dark red)
+                    ],
+                    // MUCH larger circles at low zoom levels for better visibility
+                    'circle-radius': [
+                        'interpolate', ['linear'], ['zoom'],
+                        0, 3,     // 3px at zoom level 0
+                        2, 3.5,   // 3.5px at zoom level 2
+                        5, 4,     // 4px at zoom level 5
+                        7, 3,     // 3px at zoom level 7
+                        9, 2      // 2px at zoom level 9
+                    ],
+                    'circle-opacity': 1.0, // Full opacity for better visibility
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#000000',
+                    'circle-stroke-opacity': 0.8
+                }
+            });
+            
+            // Add the fill layer for medium to high zoom levels
+            map.addLayer({
+                'id': 'unelectrified-buildings-layer',
+                'type': 'fill',
+                'source': sourceId,
+                'source-layer': vectorLayerName,
+                'minzoom': 9,  // Only show polygons from zoom level 9 and up
+                'paint': {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'consumption_kwh_month'],
+                        0, '#2166ac',       // Low consumption (blue)
+                        10, '#92c5de',      // Medium-low consumption (light blue)
+                        15, '#f4a582',      // Medium-high consumption (light red)
+                        20, '#b2182b'       // High consumption (dark red)
+                    ],
+                    'fill-opacity': 0.7,
+                    'fill-outline-color': '#000000'
+                }
+            });
+            
+            // Add an outline layer for better visibility at higher zoom levels
+            map.addLayer({
+                'id': 'unelectrified-buildings-outline',
+                'type': 'line',
+                'source': sourceId,
+                'source-layer': vectorLayerName,
+                'minzoom': 9,  // Only show outlines from zoom level 9 and up
+                'paint': {
+                    'line-width': 0.5,
+                    'line-color': '#000000',
+                    'line-opacity': 0.8
+                }
+            });
+            
+            // Add popup for unelectrified buildings (polygon layer)
+            map.on('click', 'unelectrified-buildings-layer', function(e) {
+                if (!e.features.length) return;
+                
+                const properties = e.features[0].properties;
+                const consumption = parseFloat(properties.consumption_kwh_month).toFixed(2);
+                const area = parseFloat(properties.area_in_meters).toFixed(2);
+                const probability = parseFloat(properties.predicted_prob).toFixed(2);
+                
+                const content = `
+                    <div class="popup-content">
+                        <h3>Unelectrified Building</h3>
+                        <table>
+                            <tr>
+                                <td>Origin:</td>
+                                <td>${properties.origin || 'Unknown'}</td>
+                            </tr>
+                            <tr>
+                                <td>Area:</td>
+                                <td>${area} m²</td>
+                            </tr>
+                            <tr>
+                                <td>Energy Consumption:</td>
+                                <td>${consumption} kWh/month</td>
+                            </tr>
+                            <tr>
+                                <td>Electrification Probability:</td>
+                                <td>${(probability * 100).toFixed(1)}%</td>
+                            </tr>
+                        </table>
+                    </div>
+                `;
+                
+                new maplibregl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Same popup for circle layer (low zoom levels)
+            map.on('click', 'unelectrified-buildings-circles', function(e) {
+                if (!e.features.length) return;
+                
+                const properties = e.features[0].properties;
+                const consumption = parseFloat(properties.consumption_kwh_month).toFixed(2);
+                const area = parseFloat(properties.area_in_meters).toFixed(2);
+                const probability = parseFloat(properties.predicted_prob).toFixed(2);
+                
+                const content = `
+                    <div class="popup-content">
+                        <h3>Unelectrified Building</h3>
+                        <table>
+                            <tr>
+                                <td>Origin:</td>
+                                <td>${properties.origin || 'Unknown'}</td>
+                            </tr>
+                            <tr>
+                                <td>Area:</td>
+                                <td>${area} m²</td>
+                            </tr>
+                            <tr>
+                                <td>Energy Consumption:</td>
+                                <td>${consumption} kWh/month</td>
+                            </tr>
+                            <tr>
+                                <td>Electrification Probability:</td>
+                                <td>${(probability * 100).toFixed(1)}%</td>
+                            </tr>
+                        </table>
+                    </div>
+                `;
+                
+                new maplibregl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Change the cursor to a pointer when the mouse is over the unelectrified buildings layer (polygons).
+            map.on('mouseenter', 'unelectrified-buildings-layer', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+                
+            // Change it back to a pointer when it leaves.
+            map.on('mouseleave', 'unelectrified-buildings-layer', () => {
+                map.getCanvas().style.cursor = '';
+            });
+            
+            // Same cursor behavior for circle layer
+            map.on('mouseenter', 'unelectrified-buildings-circles', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+                
+            map.on('mouseleave', 'unelectrified-buildings-circles', () => {
+                map.getCanvas().style.cursor = '';
+            });
+        }
+        
+        function removeUnelectrifiedBuildingsLayers() {
+            // Remove event handlers and layers
+            const layerIds = ['unelectrified-buildings-circles', 'unelectrified-buildings-layer', 'unelectrified-buildings-outline', 'static-building-markers'];
+            const sourceIds = ['unelectrified_buildings', 'buildings_by_consumption', 'buildings_by_probability', 'buildings_combined_filter'];
+            
+            // Remove layers
+            layerIds.forEach(layerId => {
+                if (map.getLayer(layerId)) {
+                    // Only remove event handlers from the main polygon and circle layers
+                    if (layerId === 'unelectrified-buildings-layer' || layerId === 'unelectrified-buildings-circles') {
+                        map.off('click', layerId);
+                        map.off('mouseenter', layerId);
+                        map.off('mouseleave', layerId);
+                    }
+                    map.removeLayer(layerId);
+                }
+            });
+            
+            // Remove sources except the default unelectrified_buildings source and static markers
+            sourceIds.slice(1).forEach(sourceId => {
+                if (map.getSource(sourceId)) {
+                    map.removeSource(sourceId);
+                }
+            });
+            
+            // Keep the static markers source but no need to remove it
+            // It will be reused for low zoom levels
+        }
+        
+        function showUnelectrifiedBuildingsLegend() {
+            // Create the legend if it doesn't exist
+            if (!document.getElementById('unelectrified-buildings-legend')) {
+                const legend = document.createElement('div');
+                legend.id = 'unelectrified-buildings-legend';
+                legend.className = 'map-overlay legend';
+                legend.style.bottom = '10px';
+                legend.style.top = 'auto';
+                legend.style.right = '570px';
+                
+                legend.innerHTML = `
+                    <h3>Unelectrified Buildings</h3>
+                    <div><span style="background-color: #2166ac;"></span>0-10 kWh/month</div>
+                    <div><span style="background-color: #92c5de;"></span>10-50 kWh/month</div>
+                    <div><span style="background-color: #f4a582;"></span>50-100 kWh/month</div>
+                    <div><span style="background-color: #b2182b;"></span>100+ kWh/month</div>
+                `;
+                
+                document.body.appendChild(legend);
+            } else {
+                document.getElementById('unelectrified-buildings-legend').style.display = 'block';
+            }
+        }
+        
+        // Function to update filter controls visibility based on selected filter type
+        function updateClusterFilters() {
+            const filterType = document.getElementById('filterType').value;
+            const distanceControls = document.getElementById('distanceFilterControls');
+            const energyControls = document.getElementById('energyFilterControls');
+            const combinedControls = document.getElementById('combinedFilterControls');
+            
+            // Hide all controls first
+            distanceControls.style.display = 'none';
+            energyControls.style.display = 'none';
+            combinedControls.style.display = 'none';
+            
+            // Show relevant controls based on filter type
+            if (filterType === 'distance') {
+                distanceControls.style.display = 'block';
+            } else if (filterType === 'energy') {
+                energyControls.style.display = 'block';
+            } else if (filterType === 'combined') {
+                distanceControls.style.display = 'block';
+                energyControls.style.display = 'block';
+                combinedControls.style.display = 'block';
+            }
+        }
+        
+        // Function to update distance value display
+        function updateDistanceValue() {
+            const distanceSlider = document.getElementById('maxDistance');
+            const distanceValue = document.getElementById('distanceValue');
+            distanceValue.textContent = `${distanceSlider.value} km`;
+        }
+        
+        // Function to update energy value display
+        function updateEnergyValue() {
+            const energySlider = document.getElementById('minEnergy');
+            const energyValue = document.getElementById('energyValue');
+            energyValue.textContent = `${energySlider.value} kWh`;
+        }
+        
+        // Functions for unelectrified buildings filtering
+        function updateBuildingFilters() {
+            const filterType = document.getElementById('buildingFilterType').value;
+            
+            // Hide all filter controls first
+            document.getElementById('consumptionFilterControls').style.display = 'none';
+            document.getElementById('probabilityFilterControls').style.display = 'none';
+            document.getElementById('buildingCombinedFilterControls').style.display = 'none';
+            
+            // Show relevant controls based on selected filter type
+            if (filterType === 'consumption') {
+                document.getElementById('consumptionFilterControls').style.display = 'block';
+            } else if (filterType === 'probability') {
+                document.getElementById('probabilityFilterControls').style.display = 'block';
+            } else if (filterType === 'combined') {
+                document.getElementById('consumptionFilterControls').style.display = 'block';
+                document.getElementById('probabilityFilterControls').style.display = 'block';
+                document.getElementById('buildingCombinedFilterControls').style.display = 'block';
+            }
+        }
+        
+        function updateConsumptionValue() {
+            const minConsumption = document.getElementById('minConsumption').value;
+            document.getElementById('consumptionValue').textContent = `${minConsumption} kWh/month`;
+        }
+        
+        function updateProbabilityValue() {
+            const minProbability = document.getElementById('minProbability').value;
+            const percentage = (minProbability * 100).toFixed(0);
+            document.getElementById('probabilityValue').textContent = `${percentage}%`;
+        }
+        
+        function applyBuildingFilters() {
+            // Get filter type
+            const filterType = document.getElementById('buildingFilterType').value;
+            
+            // Prepare filter parameters based on selected filter type
+            let filterParams = {};
+            
+            if (filterType === 'consumption') {
+                const minConsumption = parseFloat(document.getElementById('minConsumption').value);
+                filterParams = { minConsumption };
+            } else if (filterType === 'probability') {
+                const minProbability = parseFloat(document.getElementById('minProbability').value);
+                filterParams = { minProbability };
+            } else if (filterType === 'combined') {
+                const minConsumption = parseFloat(document.getElementById('minConsumption').value);
+                const minProbability = parseFloat(document.getElementById('minProbability').value);
+                const filterLogic = document.getElementById('buildingFilterLogic').value;
+                filterParams = { minConsumption, minProbability, filterLogic };
+            }
+            
+            // Update global filter state
+            currentBuildingFilter = {
+                ...currentBuildingFilter,
+                type: filterType,
+                ...filterParams
+            };
+            
+            // Apply the filter to the map
+            addUnelectrifiedBuildingsLayer(filterType, filterParams);
+            
+            // Show the legend
+            showUnelectrifiedBuildingsLegend();
+        }
+        
+        // Function to apply cluster filters
+        function applyClusterFilters() {
+            const filterType = document.getElementById('filterType').value;
+            const maxDistance = parseFloat(document.getElementById('maxDistance').value);
+            const minEnergy = parseFloat(document.getElementById('minEnergy').value);
+            const filterLogic = document.getElementById('filterLogic').value;
+            
+            // Update global filter state
+            currentClusterFilter = {
+                type: filterType,
+                maxDistance: maxDistance,
+                minEnergy: minEnergy,
+                filterLogic: filterLogic
+            };
+            
+            // Only proceed if unelectrified clusters are visible
+            if (document.getElementById('showUnelectrifiedClusters').checked) {
+                // Remove existing sources if they exist
+                ['clusters_by_grid_distance', 'clusters_by_energy_demand', 'clusters_combined_filter'].forEach(sourceId => {
+                    if (map.getSource(sourceId)) {
+                        // Remove any layers that use this source
+                        if (map.getLayer('unelectrified-clusters-layer')) {
+                            map.removeLayer('unelectrified-clusters-layer');
+                        }
+                        if (map.getLayer('unelectrified-clusters-outline')) {
+                            map.removeLayer('unelectrified-clusters-outline');
+                        }
+                        // Remove the source
+                        map.removeSource(sourceId);
+                    }
+                });
+                
+                // Add the appropriate source based on filter type
+                if (filterType === 'distance') {
+                    console.log('Using distance filter with max_distance:', maxDistance);
+                    
+                    map.addSource('clusters_by_grid_distance', {
+                        type: 'vector',
+                        url: 'http://localhost:3015/unelectrified_clusters',
+                        minzoom: 0,
+                        maxzoom: 14
+                    });
+                } else if (filterType === 'energy') {
+                    console.log('Using energy filter with min_energy:', minEnergy);
+                    
+                    map.addSource('clusters_by_energy_demand', {
+                        type: 'vector',
+                        url: 'http://localhost:3015/unelectrified_clusters',
+                        minzoom: 0,
+                        maxzoom: 14
+                    });
+                } else if (filterType === 'combined') {
+                    console.log('Using combined filter with max_distance:', maxDistance, 'min_energy:', minEnergy, 'filter_logic:', filterLogic);
+                    
+                    map.addSource('clusters_combined_filter', {
+                        type: 'vector',
+                        url: 'http://localhost:3015/unelectrified_clusters',
+                        minzoom: 0,
+                        maxzoom: 14
+                    });
+                }
+                
+                // Add the appropriate layer based on filter type
+                addUnelectrifiedClustersLayer(filterType, {
+                    maxDistance: maxDistance,
+                    minEnergy: minEnergy,
+                    filterLogic: filterLogic
+                });
+                
+                // Add event handlers for the new layers
+                addClusterEventHandlers();
             }
         }
         
@@ -969,6 +2090,10 @@
             const legend = document.getElementById('legend');
             let title;
 
+            // Hide specialized legends first
+            document.getElementById('probability-legend').style.display = 'none';
+            document.getElementById('consumption-legend').style.display = 'none';
+
             switch (property) {
                 case 'energy_demand_kwh':
                     title = 'Energy Demand (kWh)';
@@ -978,6 +2103,14 @@
                     break;
                 case 'area_in_meters':
                     title = 'Building Area (m²)';
+                    break;
+                case 'predicted_prob':
+                    title = 'Electrification Probability';
+                    document.getElementById('probability-legend').style.display = 'block';
+                    break;
+                case 'consumption_kwh_month':
+                    title = 'Monthly Consumption (kWh)';
+                    document.getElementById('consumption-legend').style.display = 'block';
                     break;
                 default:
                     title = 'Legend';
@@ -992,6 +2125,75 @@
             }
 
             legend.innerHTML = html;
+        }
+
+        function toggleBuildings() {
+            const isChecked = document.getElementById('showBuildings').checked;
+            
+            // If buildings layer doesn't exist yet and checkbox is checked, add it
+            if (isChecked && !map.getLayer('buildings-layer')) {
+                addBuildingsLayer('energy_demand_kwh');
+                updateLegend('energy_demand_kwh');
+                document.getElementById('colorBy').disabled = false;
+            } 
+            // If buildings layer exists and checkbox is unchecked, remove it
+            else if (!isChecked && map.getLayer('buildings-layer')) {
+                // Remove the buildings layers and related event handlers
+                const buildingLayers = ['buildings-layer', 'buildings-lowzoom-layer'];
+                buildingLayers.forEach(layerId => {
+                    if (map.getLayer(layerId)) {
+                        // Remove event handlers
+                        map.off('click', layerId);
+                        map.off('mouseenter', layerId);
+                        map.off('mouseleave', layerId);
+                        
+                        // Remove the layer
+                        map.removeLayer(layerId);
+                    }
+                });
+                
+                // Hide the energy legend when buildings are hidden
+                document.getElementById('legend').style.display = 'none';
+                document.getElementById('colorBy').disabled = true;
+            }
+        }
+        
+        /**
+         * Toggle administrative statistics visibility
+         */
+        function handleAdminStatsToggle() {
+            const isChecked = document.getElementById('showAdminStats').checked;
+            
+            // Enable/disable controls
+            document.getElementById('adminLevel').disabled = !isChecked;
+            document.getElementById('statType').disabled = !isChecked;
+            
+            // Toggle visibility of admin statistics layers
+            toggleAdminStats(isChecked);
+        }
+        
+        /**
+         * Update the administrative level shown
+         */
+        function handleAdminLevelChange() {
+            const level = document.getElementById('adminLevel').value;
+            updateAdminLevel(level);
+        }
+        
+        /**
+         * Update the statistic type used for coloring
+         */
+        function handleStatTypeChange() {
+            const statType = document.getElementById('statType').value;
+            updateStatType(statType);
+        }
+
+        /**
+         * Toggle statistics labels visibility
+         */
+        function handleLabelsToggle() {
+            const isChecked = document.getElementById('showLabels').checked;
+            toggleLabels(isChecked);
         }
     </script>
 </body>

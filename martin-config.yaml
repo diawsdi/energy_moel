@@ -12,6 +12,19 @@ worker_processes: 4
 # Amount of memory (in MB) to use for caching tiles
 cache_size_mb: 1024
 
+# CORS configuration
+cors:
+  # Allow all origins
+  allowed_origins: ['*']
+  # Allow all HTTP methods
+  allowed_methods: ['GET', 'HEAD', 'OPTIONS']
+  # Allow all HTTP headers
+  allowed_headers: ['*']
+  # Allow credentials
+  allow_credentials: true
+  # Set max age for preflight requests in seconds
+  max_age_secs: 3600
+
 # Database configuration
 postgres:
   # Database connection string with environment variable
@@ -41,9 +54,78 @@ postgres:
       buffer: 128
       # Standard tile extent
       extent: 4096
+    functions:
+      # Enable function auto-discovery
+      source_id_format: '{function}'
+      # Define specific prefix patterns for our custom functions
+      include_patterns:
+        - 'clusters_*'
+        - 'buildings_*'
 
-  # Explicitly configure our tables
-  tables:
+# Set default settings for all layers
+default:
+  srid: 4326  # WGS84
+  buffer: 64   # Buffer size in pixels
+  clip_geom: true  # Clip geometries to tile boundaries
+  extent: 4096  # Tile extent in pixels
+
+tables:
+    # Administrative boundaries and statistics layer configuration
+    admin_statistics_materialized:
+      schema: public
+      table: admin_statistics_materialized
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 128
+      clip_geom: true
+      geometry_type: MULTIPOLYGON
+      # Simplify geometries slightly for better performance at low zoom levels
+      simplify_tolerance: 2
+      properties:
+        name: text
+        level: text
+        level_num: int4
+        code: text
+        parent_id: int4
+        total_buildings: int4
+        electrified_buildings: int4
+        unelectrified_buildings: int4
+        electrification_rate: float8
+        avg_consumption_kwh_month: float8
+        avg_energy_demand_kwh_year: float8
+      
+      # Define query to filter by admin level for each zoom level
+      sql: >-
+        SELECT 
+          id, 
+          name, 
+          level, 
+          level_num,
+          code, 
+          parent_id, 
+          total_buildings, 
+          electrified_buildings,
+          unelectrified_buildings,
+          electrification_rate,
+          avg_consumption_kwh_month,
+          avg_energy_demand_kwh_year,
+          geom
+        FROM 
+          admin_statistics_materialized
+        WHERE
+          CASE
+            WHEN z <= 6 THEN level = 'region'
+            WHEN z <= 8 THEN level IN ('region', 'department')
+            WHEN z <= 10 THEN level IN ('region', 'department', 'arrondissement')
+            ELSE TRUE
+          END
+    
     buildings_energy:
       schema: public
       table: buildings_energy
@@ -67,6 +149,14 @@ postgres:
         has_access: bool
         building_type: varchar
         year: int4
+        predicted_prob: float8
+        predicted_electrified: int4
+        consumption_kwh_month: float8
+        std_consumption_kwh_month: float8
+        origin: text
+        origin_id: text
+        data_source: text
+        grid_node_id: text
     
     power_plants:
       schema: public
@@ -83,14 +173,24 @@ postgres:
       clip_geom: true
       geometry_type: POINT
       properties:
-        plant_id: int8
-        plant_name: varchar
-        plant_type: varchar
-        capacity_mw: numeric
-        status: varchar
-        country: varchar
-        iso_code: varchar
         year: int4
+        properties: jsonb
+      
+      # Define query to expose JSON properties as columns
+      sql: >-
+        SELECT 
+          plant_id, 
+          location, 
+          year,
+          properties,
+          properties->>'NOM' as plant_name,
+          properties->>'plant_type' as plant_type,
+          (properties->>'capacity_mw')::numeric as capacity_mw,
+          properties->>'Status' as status
+        FROM 
+          power_plants
+        WHERE 
+          year = 2025
     
     grid_nodes:
       schema: public
@@ -107,12 +207,23 @@ postgres:
       clip_geom: true
       geometry_type: POINT
       properties:
-        node_id: int8
-        node_name: varchar
-        node_type: varchar
-        voltage_kv: int4
-        status: varchar
-        data_source: varchar
+        year: int4
+        properties: jsonb
+      
+      # Define query to expose JSON properties as columns
+      sql: >-
+        SELECT 
+          node_id, 
+          location, 
+          year,
+          properties,
+          properties->>'NOM' as node_name,
+          properties->>'kV_max' as voltage_kv,
+          properties->>'Status' as status
+        FROM 
+          grid_nodes
+        WHERE 
+          year = 2025
     
     grid_lines:
       schema: public
@@ -129,13 +240,340 @@ postgres:
       clip_geom: true
       geometry_type: LINESTRING
       properties:
-        line_id: int8
-        from_node_id: int8
-        to_node_id: int8
-        from_node_name: varchar
-        to_node_name: varchar
-        voltage_kv: int4
-        status: varchar
-        country: varchar
-        project_name: varchar
-        data_source: varchar
+        year: int4
+        properties: jsonb
+      
+      # Define query to expose JSON properties as columns
+      sql: >-
+        SELECT 
+          line_id, 
+          path, 
+          year,
+          properties,
+          properties->>'OBJECTID' as objectid,
+          properties->>'Layer' as layer,
+          properties->>'Entity' as entity,
+          properties->>'Shape__Length' as length,
+          CASE 
+            WHEN properties->>'Entity' LIKE '%225%' THEN 225
+            WHEN properties->>'Entity' LIKE '%90%' THEN 90
+            WHEN properties->>'Entity' LIKE '%30%' THEN 30
+            ELSE 225
+          END as voltage_kv
+        FROM 
+          grid_lines
+        WHERE 
+          year = 2025
+          
+    unelectrified_clusters:
+      schema: public
+      table: unelectrified_clusters
+      srid: 4326
+      geometry_column: area
+      id_column: cluster_id
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 128
+      clip_geom: true
+      geometry_type: POLYGON
+      properties:
+        year: int4
+        properties: jsonb
+        total_buildings: int4
+        total_energy_kwh: float8
+        avg_energy_kwh: float8
+      
+      # Define query to expose properties as columns
+      sql: >-
+        SELECT 
+          cluster_id, 
+          area, 
+          year,
+          properties,
+          total_buildings,
+          total_energy_kwh,
+          avg_energy_kwh,
+          CASE
+            WHEN total_energy_kwh > 150 THEN 'high'::text
+            WHEN total_energy_kwh > 75 THEN 'medium'::text
+            ELSE 'low'::text
+          END as energy_demand_category
+        FROM 
+          unelectrified_clusters
+        WHERE 
+          year = 2023
+
+    # Restore the original table-based definition but make it a duplicate with a different name
+    unelectrified_buildings_table:
+      schema: public
+      table: unelectrified_buildings
+      srid: 4326
+      geometry_column: geom
+      id_column: id
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 256  # Increased buffer size for better edge rendering
+      clip_geom: true
+      geometry_type: POLYGON
+      # Disable geometry simplification to preserve building shapes
+      simplify_tolerance: 0
+      # Increase feature limit for higher zoom levels
+      max_feature_count: 100000
+      properties:
+        origin: text
+        origin_id: text
+        area_in_meters: float8
+        predicted_prob: float8
+        predicted_electrified: int4
+        consumption_kwh_month: float8
+        std_consumption_kwh_month: float8
+
+    # Function-based definition for unelectrified buildings with guaranteed visibility at all zoom levels
+    unelectrified_buildings:
+      schema: public
+      function: unelectrified_buildings_all_zooms_zxy
+      srid: 4326
+      minzoom: 0
+      maxzoom: 22
+      # Bounds for Senegal (approximate)
+      bounds: [-17.53, 12.33, -11.36, 16.69]
+      extent: 4096
+      buffer: 512  # Larger buffer for better edge rendering
+      clip_geom: true
+      # Geometry type - can be polygon or point depending on zoom level
+      geometry_type: GEOMETRY
+      # Disable geometry simplification to preserve building shapes
+      simplify_tolerance: 0
+      # Higher feature limit for function-based source
+      max_feature_count: 100000
+      properties:
+        id: int4
+        origin: text
+        origin_id: text
+        area_in_meters: float8
+        predicted_prob: float8
+        predicted_electrified: int4
+        consumption_kwh_month: float8
+        std_consumption_kwh_month: float8
+
+functions:
+  # Function to filter unelectrified clusters by distance to grid
+  clusters_by_grid_distance:
+    # Show geometry as polygon
+    geometry_type: POLYGON
+    # Input parameters
+    parameters:
+      - name: max_distance
+        type: float
+        default: 5.0
+    # SQL query using the parameter
+    sql: >-
+      SELECT 
+        cluster_id, 
+        area, 
+        year,
+        properties,
+        total_buildings,
+        total_energy_kwh,
+        avg_energy_kwh,
+        distance_to_grid_km,
+        CASE
+          WHEN total_energy_kwh > 150 THEN 'high'::text
+          WHEN total_energy_kwh > 75 THEN 'medium'::text
+          ELSE 'low'::text
+        END as energy_demand_category
+      FROM 
+        clusters_with_grid_distance
+      WHERE 
+        year = 2025
+        AND distance_to_grid_km <= :max_distance
+      ORDER BY
+        distance_to_grid_km ASC
+  
+  # Function to filter unelectrified clusters by energy demand
+  clusters_by_energy_demand:
+    geometry_type: POLYGON
+    parameters:
+      - name: min_energy
+        type: float
+        default: 75.0
+    sql: >-
+      SELECT 
+        cluster_id, 
+        area, 
+        year,
+        properties,
+        total_buildings,
+        total_energy_kwh,
+        avg_energy_kwh,
+        distance_to_grid_km,
+        CASE
+          WHEN total_energy_kwh > 150 THEN 'high'::text
+          WHEN total_energy_kwh > 75 THEN 'medium'::text
+          ELSE 'low'::text
+        END as energy_demand_category
+      FROM 
+        clusters_with_grid_distance
+      WHERE 
+        year = 2025
+        AND total_energy_kwh >= :min_energy
+      ORDER BY
+        total_energy_kwh DESC
+
+  # Function to combine both filters (distance and energy demand)
+  clusters_combined_filter:
+    geometry_type: POLYGON
+    parameters:
+      - name: max_distance
+        type: float
+        default: 5.0
+      - name: min_energy
+        type: float
+        default: 75.0
+      - name: filter_type
+        type: string
+        default: "and"
+    sql: >-
+      SELECT 
+        cluster_id, 
+        area, 
+        year,
+        properties,
+        total_buildings,
+        total_energy_kwh,
+        avg_energy_kwh,
+        distance_to_grid_km,
+        CASE
+          WHEN total_energy_kwh > 150 THEN 'high'::text
+          WHEN total_energy_kwh > 75 THEN 'medium'::text
+          ELSE 'low'::text
+        END as energy_demand_category
+      FROM 
+        clusters_with_grid_distance
+      WHERE 
+        year = 2025
+        AND (
+          CASE 
+            WHEN :filter_type = 'or' THEN 
+              (distance_to_grid_km <= :max_distance OR total_energy_kwh >= :min_energy)
+            ELSE 
+              (distance_to_grid_km <= :max_distance AND total_energy_kwh >= :min_energy)
+          END
+        )
+      ORDER BY
+        CASE 
+          WHEN :filter_type = 'or' THEN distance_to_grid_km 
+          ELSE total_energy_kwh 
+        END
+  
+  # Function to filter unelectrified buildings by consumption
+  buildings_by_consumption:
+    geometry_type: POLYGON
+    parameters:
+      - name: min_consumption
+        type: float
+        default: 10.0
+    sql: >-
+      SELECT 
+        id, 
+        geom, 
+        origin,
+        origin_id,
+        area_in_meters,
+        predicted_prob,
+        predicted_electrified,
+        consumption_kwh_month,
+        std_consumption_kwh_month,
+        CASE
+          WHEN consumption_kwh_month > 15 THEN 'high'::text
+          WHEN consumption_kwh_month > 10 THEN 'medium'::text
+          ELSE 'low'::text
+        END as consumption_category
+      FROM 
+        unelectrified_buildings
+      WHERE 
+        consumption_kwh_month >= :min_consumption
+      ORDER BY
+        consumption_kwh_month DESC
+        
+  # Function to filter unelectrified buildings by electrification probability
+  buildings_by_probability:
+    geometry_type: POLYGON
+    parameters:
+      - name: min_probability
+        type: float
+        default: 0.3
+    sql: >-
+      SELECT 
+        id, 
+        geom, 
+        origin,
+        origin_id,
+        area_in_meters,
+        predicted_prob,
+        predicted_electrified,
+        consumption_kwh_month,
+        std_consumption_kwh_month,
+        CASE
+          WHEN consumption_kwh_month > 15 THEN 'high'::text
+          WHEN consumption_kwh_month > 10 THEN 'medium'::text
+          ELSE 'low'::text
+        END as consumption_category
+      FROM 
+        unelectrified_buildings
+      WHERE 
+        predicted_prob >= :min_probability
+      ORDER BY
+        predicted_prob DESC
+  
+  # Function to combine both filters for unelectrified buildings
+  buildings_combined_filter:
+    geometry_type: POLYGON
+    parameters:
+      - name: min_consumption
+        type: float
+        default: 10.0
+      - name: min_probability
+        type: float
+        default: 0.3
+      - name: filter_type
+        type: string
+        default: "and"
+    sql: >-
+      SELECT 
+        id, 
+        geom, 
+        origin,
+        origin_id,
+        area_in_meters,
+        predicted_prob,
+        predicted_electrified,
+        consumption_kwh_month,
+        std_consumption_kwh_month,
+        CASE
+          WHEN consumption_kwh_month > 15 THEN 'high'::text
+          WHEN consumption_kwh_month > 10 THEN 'medium'::text
+          ELSE 'low'::text
+        END as consumption_category
+      FROM 
+        unelectrified_buildings
+      WHERE 
+        (
+          CASE 
+            WHEN :filter_type = 'or' THEN 
+              (consumption_kwh_month >= :min_consumption OR predicted_prob >= :min_probability)
+            ELSE 
+              (consumption_kwh_month >= :min_consumption AND predicted_prob >= :min_probability)
+          END
+        )
+      ORDER BY
+        CASE 
+          WHEN :filter_type = 'or' THEN consumption_kwh_month 
+          ELSE predicted_prob 
+        END DESC

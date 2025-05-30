@@ -18,6 +18,17 @@ class BuildingBase(BaseModel):
     grid_node_id: Optional[str] = None
     origin_id: Optional[str] = None
 
+    # ML prediction fields
+    predicted_prob: Optional[float] = None
+    predicted_electrified: Optional[int] = None
+    
+    # Energy consumption fields
+    consumption_kwh_month: Optional[float] = None
+    std_consumption_kwh_month: Optional[float] = None
+    
+    # Origin information
+    origin: Optional[str] = None
+
 class BuildingCreate(BuildingBase):
     geom: Dict[str, Any]  # GeoJSON-like structure
 
@@ -47,12 +58,18 @@ class BuildingMetadata(BaseModel):
     min_energy_demand: float
     max_energy_demand: float
     year_distribution: Dict[int, int]
+    electrified_count: Optional[int] = None
+    avg_consumption_kwh_month: Optional[float] = None
+    high_confidence_electrified: Optional[int] = None  # buildings with high prediction probability
 
 # For statistics
 class BuildingStats(BaseModel):
     total_count: int
     building_types: Dict[str, int]
     access_counts: Dict[str, int]
+    electrification_rate: Optional[float] = None
+    avg_consumption: Optional[float] = None
+    confidence_levels: Optional[Dict[str, int]] = None
     
     class Config:
         orm_mode = True

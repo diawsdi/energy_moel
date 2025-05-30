@@ -28,6 +28,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    volumes:
+      - ./app:/app/app
     env_file:
       - .env
     environment:
@@ -55,7 +57,7 @@ services:
       - WATCH_MODE=true
     command: --config /etc/martin-config.yaml
     ports:
-      - "3000:3000"
+      - "3015:3000"
     depends_on:
       db:
         condition: service_healthy

@@ -8,3 +8,44 @@ processed_data/
 *.txt
 *.log
 *.log
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
+frontend/node_modules
+frontend/.pnp
+frontend/.pnp.js
+
+# Testing
+frontend/coverage
+
+# Next.js build output
+frontend/.next/
+frontend/out/
+
+# Production build artifacts
+frontend/build
+
+# Static site generator artifacts
+frontend/.vercel/
+
+# dotenv environment variables file
+frontend/.env*.local
+frontend/.env
+
+# Debug log files
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Editor directories and files
+frontend/.idea
+frontend/.vscode/*
+frontend/.vscode/settings.json
+frontend/.vscode/tasks.json
+frontend/.vscode/launch.json
+frontend/.vscode/extensions.json
+frontend/.sublime-workspace
+
+# Miscellaneous
+frontend/.DS_Store
+frontend/Thumbs.db
