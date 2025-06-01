@@ -1,0 +1,6 @@
+{
+    "region": "http://localhost:8001/api/v1/analytics/cache/download-path/boundaries/level-1",
+    "department": "http://localhost:8001/api/v1/analytics/cache/download-path/boundaries/level-2",
+    "arrondissement": "http://localhost:8001/api/v1/analytics/cache/download-path/boundaries/level-3",
+    "commune": "http://localhost:8001/api/v1/analytics/cache/download-path/boundaries/level-4"
+}

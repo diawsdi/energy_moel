@@ -1,0 +1,23 @@
+{
+  "type": "Feature",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [-16.5, 14.5],
+        [-16.3, 14.5],
+        [-16.3, 14.7],
+        [-16.5, 14.7],
+        [-16.5, 14.5]
+      ]
+    ]
+  },
+  "properties": {
+    "name": "Single Test Village",
+    "population": 1200,
+    "region": "Dakar",
+    "area_type": "village",
+    "electrified": false,
+    "priority": "high"
+  }
+}

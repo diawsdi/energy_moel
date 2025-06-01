@@ -1,0 +1,159 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-16.8, 14.2],
+            [-16.6, 14.2],
+            [-16.6, 14.4],
+            [-16.8, 14.4],
+            [-16.8, 14.2]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Village Alpha",
+        "population": 850,
+        "region": "Dakar",
+        "area_type": "village",
+        "electrified": true,
+        "priority": "medium",
+        "infrastructure": {
+          "roads": true,
+          "water": true,
+          "school": true
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-16.4, 14.1],
+            [-16.2, 14.1],
+            [-16.2, 14.3],
+            [-16.4, 14.3],
+            [-16.4, 14.1]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Village Beta",
+        "population": 1500,
+        "region": "Thies",
+        "area_type": "village",
+        "electrified": false,
+        "priority": "high",
+        "infrastructure": {
+          "roads": false,
+          "water": true,
+          "school": false
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [-16.0, 14.6],
+              [-15.9, 14.6],
+              [-15.9, 14.7],
+              [-16.0, 14.7],
+              [-16.0, 14.6]
+            ]
+          ],
+          [
+            [
+              [-16.0, 14.8],
+              [-15.9, 14.8],
+              [-15.9, 14.9],
+              [-16.0, 14.9],
+              [-16.0, 14.8]
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Village Gamma Complex",
+        "population": 2200,
+        "region": "Saint-Louis",
+        "area_type": "village",
+        "electrified": true,
+        "priority": "low",
+        "infrastructure": {
+          "roads": true,
+          "water": true,
+          "school": true
+        },
+        "note": "Multi-polygon village with separate residential areas"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-15.7, 13.8],
+            [-15.5, 13.8],
+            [-15.5, 14.0],
+            [-15.7, 14.0],
+            [-15.7, 13.8]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Village Delta",
+        "population": 650,
+        "region": "Fatick",
+        "area_type": "village",
+        "electrified": false,
+        "priority": "high",
+        "infrastructure": {
+          "roads": true,
+          "water": false,
+          "school": true
+        },
+        "economic_activity": "agriculture"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-15.3, 14.5],
+            [-15.1, 14.5],
+            [-15.1, 14.7],
+            [-15.3, 14.7],
+            [-15.3, 14.5]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Village Epsilon",
+        "population": 980,
+        "region": "Diourbel",
+        "area_type": "village",
+        "electrified": true,
+        "priority": "medium",
+        "infrastructure": {
+          "roads": true,
+          "water": true,
+          "school": false
+        },
+        "economic_activity": "fishing"
+      }
+    }
+  ]
+}
