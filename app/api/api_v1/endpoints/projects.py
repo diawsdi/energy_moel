@@ -138,6 +138,25 @@ def update_project(
     return db_project
 
 
+@router.delete("/{project_id}")
+def delete_project(
+    project_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user: str = Depends(deps.get_current_user),
+):
+    """Delete a project and all its associated areas."""
+    # Verify project exists
+    db_project = db.query(ProjectModel).filter(ProjectModel.id == project_id).first()
+    if not db_project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Delete the project (cascade will delete all areas)
+    db.delete(db_project)
+    db.commit()
+    
+    return {"success": True, "message": f"Project {project_id} deleted successfully"}
+
+
 @router.get("/{project_id}/areas", response_model=List[ProjectArea])
 def get_project_areas(
     project_id: str,
